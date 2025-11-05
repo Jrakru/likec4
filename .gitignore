@@ -44,6 +44,21 @@ packages/language-server/src/generated/
 packages/language-server/src/generated-lib/
 packages/vscode-preview/src/generated-icons.tsx
 
+# TypeScript build outputs in src directories
+# (these should be in dist/ or lib/ instead)
+packages/*/src/**/*.d.ts
+packages/*/src/**/*.d.ts.map
+packages/*/src/**/*.js
+styled-system/*/src/**/*.d.ts
+styled-system/*/src/**/*.d.ts.map
+styled-system/*/src/**/*.js
+
+# TypeScript build outputs in package roots
+packages/*/build.config.d.ts
+packages/*/build.config.js
+styled-system/*/build.config.d.ts
+styled-system/*/build.config.js
+
 vite.config.ts.timestamp*
 vitest.config.ts.timestamp*
 
