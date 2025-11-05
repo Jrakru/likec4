@@ -6,21 +6,17 @@ import {
   type Any,
   type aux,
   type Color,
-  type DynamicStep,
   type DynamicViewRule,
   type DynamicViewStep,
   type NonEmptyArray,
   type RelationshipLineType,
   type ViewRuleGlobalStyle,
   exact,
-  isDynamicBranchCollection,
-  isDynamicStep,
-  isDynamicStepsSeries,
   isViewRulePredicate,
-  toLegacyParallel,
 } from '../../types'
 import { compareRelations, isNonEmptyArray } from '../../utils'
 import { elementExprToPredicate } from '../utils/elementExpressionToPredicate'
+import { flattenSteps } from './StepVisitor'
 
 /**
  * Collects element models explicitly referenced by `include` expressions in the provided resolved rules.
@@ -47,32 +43,6 @@ export function elementsFromIncludeProperties<A extends Any>(
     }
   }
   return explicits
-}
-
-export const flattenSteps = <A extends Any>(s: DynamicViewStep<A>): DynamicStep<A>[] => {
-  const legacyParallel = toLegacyParallel(s)
-  if (legacyParallel) {
-    // Parallel steps are flattened by taking the first step of each parallel step and the rest of the steps
-    const heads = [] as DynamicStep<A>[]
-    const tails = [] as DynamicStep<A>[]
-    for (const step of legacyParallel.__parallel ?? []) {
-      if (isDynamicStepsSeries(step)) {
-        const [head, ...tail] = step.__series
-        heads.push(head)
-        tails.push(...tail)
-      } else {
-        heads.push(step)
-      }
-    }
-    return [...heads, ...tails]
-  }
-  if (isDynamicBranchCollection(s)) {
-    return flatMap(s.paths, path => flatMap(path.steps, entry => flattenSteps(entry as DynamicViewStep<A>)))
-  }
-  if (isDynamicStepsSeries(s)) {
-    return [...s.__series]
-  }
-  return isDynamicStep(s) ? [s] : []
 }
 
 /**
