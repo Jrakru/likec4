@@ -3,11 +3,13 @@ import type {
   DynamicStep,
   DynamicViewIncludeRule,
   DynamicViewRule,
+  DynamicViewStep,
   ElementViewPredicate,
   Fqn,
   ParsedDynamicView as DynamicView,
   ViewId,
 } from '../../../types'
+import { isDynamicBranchCollection, isDynamicStep, isDynamicStepsSeries } from '../../../types/view-parsed.dynamic'
 import { type $Aux, type FakeElementIds, fakeModel } from '../../element-view/__test__/fixture'
 import { computeDynamicView } from '../compute'
 
@@ -51,9 +53,21 @@ export function $step(expr: StepExpr, props?: string | Partial<StepProps>): Dyna
 }
 
 export function compute(
-  stepsAndRules: (DynamicStep<$Aux> | ElementViewPredicate<$Aux> | DynamicViewIncludeRule<$Aux>)[],
+  stepsAndRules: (DynamicViewStep<$Aux> | ElementViewPredicate<$Aux> | DynamicViewIncludeRule<$Aux>)[],
 ) {
-  const [steps, rules] = partition(stepsAndRules, (s): s is DynamicStep => 'source' in s)
+  const [steps, rules] = partition(
+    stepsAndRules,
+    (s): s is DynamicViewStep<$Aux> => {
+      // Rules have 'include' or 'exclude' properties, steps don't
+      const hasRuleProps = 'include' in s || 'exclude' in s
+      if (hasRuleProps) return false
+
+      // Use proper type guards for step types
+      return isDynamicStep(s as any) ||
+        isDynamicBranchCollection(s as any) ||
+        isDynamicStepsSeries(s as any)
+    },
+  )
   let view = computeDynamicView(
     fakeModel,
     {

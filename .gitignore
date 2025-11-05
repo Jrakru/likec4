@@ -11,6 +11,10 @@
 
 panda.buildinfo.json
 
+# Local documentation and work files
+upstream/
+*.local.md
+
 apps/*/dist
 apps/*/lib
 apps/*/styled-system
