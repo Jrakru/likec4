@@ -1,0 +1,1 @@
+{"version":3,"file":"compute-color-values.d.ts","sourceRoot":"","sources":["compute-color-values.ts"],"names":[],"mappings":"AAIA,OAAO,EAAE,aAAa,EAAE,MAAM,0BAA0B,CAAA;AACxD,OAAO,EAAE,kBAAkB,EAAE,MAAM,+BAA+B,CAAA;AAClE,OAAO,KAAK,EAAE,YAAY,EAAY,gBAAgB,EAAE,MAAM,SAAS,CAAA;AAMvE,wBAAgB,kBAAkB,CAAC,KAAK,EAAE,YAAY,GAAG,gBAAgB,CAoBxE;AAyCD,OAAO,EAAE,aAAa,EAAE,kBAAkB,EAAE,CAAA"}
