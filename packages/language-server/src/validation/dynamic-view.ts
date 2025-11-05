@@ -85,6 +85,40 @@ function normalizeBranchKind(kind: string): 'parallel' | 'alternate' {
   return kind === 'alternate' || kind === 'alt' ? 'alternate' : 'parallel'
 }
 
+/**
+ * Calculate the maximum branch nesting depth.
+ *
+ * Recursively traverses branch collections to find the deepest nesting level.
+ * Used to warn about excessive nesting (Edge Case #2).
+ *
+ * @param node - The branch collection to analyze
+ * @param currentDepth - The current depth (starts at 1 for the root branch)
+ * @returns The maximum depth found
+ */
+function calculateBranchDepth(node: ast.DynamicViewBranchCollection, currentDepth = 1): number {
+  let maxDepth = currentDepth
+
+  // Check paths for nested branches
+  for (const path of node.paths) {
+    for (const step of path.steps) {
+      if (ast.isDynamicViewBranchCollection(step)) {
+        const childDepth = calculateBranchDepth(step, currentDepth + 1)
+        maxDepth = Math.max(maxDepth, childDepth)
+      }
+    }
+  }
+
+  // Check anonymous steps for nested branches
+  for (const step of node.steps) {
+    if (ast.isDynamicViewBranchCollection(step)) {
+      const childDepth = calculateBranchDepth(step, currentDepth + 1)
+      maxDepth = Math.max(maxDepth, childDepth)
+    }
+  }
+
+  return maxDepth
+}
+
 export const dynamicViewBranchCollection = (
   services: LikeC4Services,
 ): ValidationCheck<ast.DynamicViewBranchCollection> => {
@@ -112,6 +146,52 @@ export const dynamicViewBranchCollection = (
         {
           node,
           code: 'LIKEC4-DEGENERATE-BRANCH',
+        },
+      )
+    }
+
+    // Check for empty paths (Edge Case #1)
+    for (const path of node.paths) {
+      if (path.steps.length === 0) {
+        accept('error', 'Path must contain at least one step', {
+          node: path,
+          code: 'LIKEC4-EMPTY-PATH',
+        })
+      }
+    }
+
+    // Check for mixed anonymous and named paths (Edge Case #3)
+    if (node.paths.length > 0 && node.steps.length > 0) {
+      accept(
+        'hint',
+        'Mixing named paths and anonymous steps. Consider using explicit paths for all branches for consistency.',
+        {
+          node,
+          code: 'LIKEC4-MIXED-PATH-STYLE',
+        },
+      )
+    }
+
+    // Check for excessive nesting depth (Edge Case #2)
+    const MAX_BRANCH_DEPTH = 3
+    const ERROR_DEPTH = 6
+    const depth = calculateBranchDepth(node)
+    if (depth >= ERROR_DEPTH) {
+      accept(
+        'error',
+        `Branch nesting depth (${depth}) exceeds maximum allowed depth (${ERROR_DEPTH}). Consider flattening the branch structure.`,
+        {
+          node,
+          code: 'LIKEC4-MAX-DEPTH',
+        },
+      )
+    } else if (depth > MAX_BRANCH_DEPTH) {
+      accept(
+        'warning',
+        `Branch nesting depth (${depth}) exceeds recommended depth (${MAX_BRANCH_DEPTH}). Deep nesting can make diagrams hard to read.`,
+        {
+          node,
+          code: 'LIKEC4-DEEP-NESTING',
         },
       )
     }
