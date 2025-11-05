@@ -179,15 +179,14 @@ class DynamicViewCompute<A extends AnyAux> {
   }
 
   private processBranchAwareSteps(viewSteps: DynamicViewStep<A>[]): void {
-    const branchStack: BranchStackEntry<A>[] = []
-
     const emitInBranch = (step: DynamicStep<A>, rootIndex: number) => {
-      const id = this.buildStepId(rootIndex, branchStack)
+      const branchStack = this.branchManager.getStack() as BranchStackEntry<A>[]
+      const id = this.stepIdGenerator.buildStepId(rootIndex, branchStack)
       this.emitStep(step, id, branchStack)
     }
 
     const emitAtRoot = (step: DynamicStep<A>, rootIndex: number) => {
-      const id = this.buildStepId(rootIndex)
+      const id = this.stepIdGenerator.buildStepId(rootIndex)
       this.emitStep(step, id)
     }
 
@@ -196,13 +195,13 @@ class DynamicViewCompute<A extends AnyAux> {
       for (const entry of parallel?.__parallel ?? []) {
         if (isDynamicStepsSeries(entry)) {
           for (const item of entry.__series) {
-            const id = stepEdgeId(rootIndex, nestedIndex)
+            const id = this.stepIdGenerator.buildLegacyParallelStepId(rootIndex, nestedIndex)
             this.emitStep(item, id)
             nestedIndex++
           }
           continue
         }
-        const id = stepEdgeId(rootIndex, nestedIndex)
+        const id = this.stepIdGenerator.buildLegacyParallelStepId(rootIndex, nestedIndex)
         this.emitStep(entry as DynamicStep<A>, id)
         nestedIndex++
       }
@@ -253,10 +252,9 @@ class DynamicViewCompute<A extends AnyAux> {
           pathIndex: pathIndex + 1,
           stepCounter: 0,
         }
-        this.ensureBranchPath(entry)
-        branchStack.push(entry)
+        this.branchManager.push(entry)
         processBranchEntries(path.steps, rootIndex)
-        branchStack.pop()
+        this.branchManager.pop()
       }
     }
 
@@ -423,9 +421,10 @@ class DynamicViewCompute<A extends AnyAux> {
           nodes: nodeNotations,
         },
       }),
-      ...(branchFeatureEnabled && this.branchCollections.size > 0 && {
-        branchCollections: this.finalizeBranchCollections(),
-      }),
+      ...(branchFeatureEnabled && (() => {
+        const branchCollections = this.branchManager.finalize()
+        return branchCollections.length > 0 ? { branchCollections } : {}
+      })()),
     })
   }
 }
