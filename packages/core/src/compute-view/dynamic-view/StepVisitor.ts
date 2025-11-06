@@ -1,6 +1,7 @@
 import { flatMap } from 'remeda'
 import type { AnyAux, DynamicStep, DynamicViewStep } from '../../types'
 import { isDynamicBranchCollection, isDynamicStep, isDynamicStepsSeries, toLegacyParallel } from '../../types'
+import type { LegacyParallelStep } from './types'
 
 /**
  * Visitor for traversing and flattening dynamic view steps.
@@ -94,10 +95,11 @@ export class StepFlattener<A extends AnyAux> {
   private visitBranch(branch: { paths: readonly { steps: readonly any[] }[] }): DynamicStep<A>[] {
     return flatMap(
       branch.paths,
-      path => flatMap(
-        path.steps,
-        entry => this.visit(entry as DynamicViewStep<A>)
-      )
+      path =>
+        flatMap(
+          path.steps,
+          entry => this.visit(entry as DynamicViewStep<A>),
+        ),
     )
   }
 
@@ -121,7 +123,7 @@ export class StepFlattener<A extends AnyAux> {
    * ```
    */
   private visitLegacyParallel(
-    parallel: { __parallel?: readonly (DynamicStep<A> | { __series: readonly DynamicStep<A>[] })[] }
+    parallel: LegacyParallelStep<A>,
   ): DynamicStep<A>[] {
     const heads: DynamicStep<A>[] = []
     const tails: DynamicStep<A>[] = []

@@ -722,7 +722,7 @@ describe.concurrent('DynamicView Checks', () => {
     describe('nesting depth validation', () => {
       it('should warn on depth 4 nesting', async ({ expect }) => {
         const { validate } = createTestServices()
-        const { errors, warnings } = await validate(`
+        const { errors } = await validate(`
           specification {
             element component
           }
@@ -835,7 +835,7 @@ describe.concurrent('DynamicView Checks', () => {
 
       it('should calculate depth correctly with anonymous paths', async ({ expect }) => {
         const { validate } = createTestServices()
-        const { errors, warnings } = await validate(`
+        const { errors } = await validate(`
           specification {
             element component
           }
@@ -864,7 +864,7 @@ describe.concurrent('DynamicView Checks', () => {
 
       it('should calculate depth from deepest branch', async ({ expect }) => {
         const { validate } = createTestServices()
-        const { errors, warnings } = await validate(`
+        const { errors } = await validate(`
           specification {
             element component
           }

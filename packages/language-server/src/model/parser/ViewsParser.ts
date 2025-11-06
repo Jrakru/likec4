@@ -1,5 +1,5 @@
 import * as c4 from '@likec4/core'
-import { type ModelFqnExpr, invariant, isNonEmptyArray, nonexhaustive } from '@likec4/core'
+import { type ModelFqnExpr, invariant, isNonEmptyArray, nonexhaustive, normalizeBranchKind } from '@likec4/core'
 import { loggable } from '@likec4/log'
 import { filter, find, isDefined, isEmpty, isNonNullish, isNumber, isTruthy, last, mapToObj, pipe } from 'remeda'
 import type { Except, Writable } from 'type-fest'
@@ -379,7 +379,7 @@ export function ViewsParser<TBase extends WithPredicates & WithDeploymentView>(B
 
     // Helper to map AST kind to normalized branch kind
     getBranchKind(astKind: string): 'parallel' | 'alternate' {
-      return astKind === 'alternate' || astKind === 'alt' ? 'alternate' : 'parallel'
+      return normalizeBranchKind(astKind)
     }
 
     // Helper to parse and filter valid steps

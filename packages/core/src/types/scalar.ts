@@ -167,11 +167,15 @@ export type StepEdgeIndex = string | number
  * @returns The segment as a string; numeric segments are left-padded with zeros to at least two characters, non-numeric segments are returned unchanged
  */
 function formatIndex(segment: StepEdgeIndex): string {
-  const raw = typeof segment === 'number' ? segment.toString() : segment
-  if (!/^\d+$/u.test(raw)) {
-    return raw
+  if (typeof segment === 'number') {
+    // Numeric segments are always digits, so just pad and return
+    return segment.toString().padStart(2, '0')
   }
-  return raw.padStart(2, '0')
+  // Only run the regex for string segments
+  if (!/^\d+$/u.test(segment)) {
+    return segment
+  }
+  return segment.padStart(2, '0')
 }
 
 /**

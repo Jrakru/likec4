@@ -3,6 +3,7 @@ import { isDynamicBranchCollectionsEnabledForProject } from '../../config/featur
 import type { LikeC4Model } from '../../model'
 import type {
   AnyAux,
+  aux,
   DynamicBranchCollection,
   DynamicBranchEntry,
   DynamicStep,
@@ -421,11 +422,17 @@ class DynamicViewCompute<A extends AnyAux> {
           nodes: nodeNotations,
         },
       }),
-      ...(branchFeatureEnabled && (() => {
-        const branchCollections = this.branchManager.finalize()
-        return branchCollections.length > 0 ? { branchCollections } : {}
-      })()),
+      ...(branchFeatureEnabled && this.getBranchCollectionsIfAny()),
     })
+  }
+
+  /**
+   * Finalize and return branch collections if any exist.
+   * Returns an object with branchCollections property, or an empty object if none.
+   */
+  private getBranchCollectionsIfAny() {
+    const branchCollections = this.branchManager.finalize()
+    return branchCollections.length > 0 ? { branchCollections } : {}
   }
 }
 export function computeDynamicView<M extends AnyAux>(

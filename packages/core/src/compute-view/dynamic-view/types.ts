@@ -117,3 +117,19 @@ export interface ComputedStep<A extends AnyAux> {
   /** Trail of branches this step belongs to (for nested branches) */
   branchTrail?: ComputedBranchTrailEntry<A>[]
 }
+
+/**
+ * Represents a legacy parallel step structure.
+ *
+ * This type defines the shape of parallel steps that use the older `__parallel` array format,
+ * which contains either individual steps or series of steps.
+ *
+ * Used in StepVisitor to maintain type safety when processing legacy parallel structures.
+ */
+export interface LegacyParallelStep<A extends AnyAux> {
+  /** Array of parallel steps or series in the legacy format */
+  __parallel?: readonly (
+    | import('../../types').DynamicStep<A>
+    | import('../../types').DynamicStepsSeries<A>
+  )[]
+}

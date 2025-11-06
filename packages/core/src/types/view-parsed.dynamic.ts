@@ -205,6 +205,16 @@ export type DynamicViewRule<A extends AnyAux = AnyAux> = ExclusiveUnion<{
 
 export type DynamicViewDisplayVariant = 'diagram' | 'sequence'
 
+/**
+ * Normalize a branch kind string to a canonical value.
+ *
+ * @param kind - Branch kind string; `'alternate'` or `'alt'` map to `alternate`, any other value maps to `parallel`
+ * @returns `'alternate'` if `kind` is `'alternate'` or `'alt'`, `'parallel'` otherwise
+ */
+export function normalizeBranchKind(kind: string): 'parallel' | 'alternate' {
+  return kind === 'alternate' || kind === 'alt' ? 'alternate' : 'parallel'
+}
+
 export interface ParsedDynamicView<A extends AnyAux = AnyAux> extends BaseParsedViewProperties<A> {
   [_type]: 'dynamic'
   /**

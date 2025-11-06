@@ -1,10 +1,26 @@
-import { isAncestor } from '@likec4/core'
+import { isAncestor, normalizeBranchKind } from '@likec4/core'
 import { type ValidationCheck, AstUtils } from 'langium'
 import { isEmpty } from 'remeda'
 import { ast } from '../ast'
 import type { LikeC4Services } from '../module'
 import { elementRef } from '../utils/elementRef'
 import { tryOrLog } from './_shared'
+
+/**
+ * Branch nesting depth configuration.
+ *
+ * These limits help maintain diagram readability and prevent rendering issues:
+ * - MAX_BRANCH_DEPTH: Recommended depth based on cognitive load research and typical use cases.
+ *   Exceeding this triggers a warning to encourage flatter, more maintainable structures.
+ * - ERROR_DEPTH: Hard limit based on rendering constraints and practical limitations.
+ *   Exceeding this triggers an error to prevent unwieldy diagrams.
+ */
+const BRANCH_DEPTH_LIMITS = {
+  /** Recommended maximum depth for maintainability and readability */
+  MAX_BRANCH_DEPTH: 3,
+  /** Absolute maximum depth to prevent rendering issues */
+  ERROR_DEPTH: 6,
+} as const
 
 export const dynamicViewStepSingle = (services: LikeC4Services): ValidationCheck<ast.DynamicStepSingle> => {
   const fqnIndex = services.likec4.FqnIndex
@@ -73,16 +89,6 @@ export const dynamicViewDisplayVariant = (
       })
     }
   })
-}
-
-/**
- * Normalize a branch kind identifier to either `parallel` or `alternate`.
- *
- * @param kind - Branch kind string; `'alternate'` or `'alt'` map to `alternate`, any other value maps to `parallel`
- * @returns `'alternate'` if `kind` is `'alternate'` or `'alt'`, `'parallel'` otherwise
- */
-function normalizeBranchKind(kind: string): 'parallel' | 'alternate' {
-  return kind === 'alternate' || kind === 'alt' ? 'alternate' : 'parallel'
 }
 
 /**
@@ -173,22 +179,20 @@ export const dynamicViewBranchCollection = (
     }
 
     // Check for excessive nesting depth (Edge Case #2)
-    const MAX_BRANCH_DEPTH = 3
-    const ERROR_DEPTH = 6
     const depth = calculateBranchDepth(node)
-    if (depth >= ERROR_DEPTH) {
+    if (depth >= BRANCH_DEPTH_LIMITS.ERROR_DEPTH) {
       accept(
         'error',
-        `Branch nesting depth (${depth}) exceeds maximum allowed depth (${ERROR_DEPTH}). Consider flattening the branch structure.`,
+        `Branch nesting depth (${depth}) exceeds maximum allowed depth (${BRANCH_DEPTH_LIMITS.ERROR_DEPTH}). Consider flattening the branch structure.`,
         {
           node,
           code: 'LIKEC4-MAX-DEPTH',
         },
       )
-    } else if (depth > MAX_BRANCH_DEPTH) {
+    } else if (depth > BRANCH_DEPTH_LIMITS.MAX_BRANCH_DEPTH) {
       accept(
         'warning',
-        `Branch nesting depth (${depth}) exceeds recommended depth (${MAX_BRANCH_DEPTH}). Deep nesting can make diagrams hard to read.`,
+        `Branch nesting depth (${depth}) exceeds recommended depth (${BRANCH_DEPTH_LIMITS.MAX_BRANCH_DEPTH}). Deep nesting can make diagrams hard to read.`,
         {
           node,
           code: 'LIKEC4-DEEP-NESTING',
