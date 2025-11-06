@@ -1,21 +1,30 @@
 import { findLast, isTruthy, map, pipe } from 'remeda'
-import type { ElementModel, LikeC4Model } from '../../model'
-import type { AnyAux, aux, DynamicStep, DynamicStepsSeries, scalar } from '../../types'
+import { isDynamicBranchCollectionsEnabledForProject } from '../../config/featureFlags'
+import type { LikeC4Model } from '../../model'
+import type {
+  AnyAux,
+  aux,
+  DynamicBranchCollection,
+  DynamicBranchEntry,
+  DynamicStep,
+  DynamicStepsSeries,
+  DynamicViewStep,
+  scalar,
+} from '../../types'
 import {
-  type Color,
   type ComputedDynamicView,
   type ComputedEdge,
   type ParsedDynamicView as DynamicView,
-  type RelationshipArrowType,
-  type RelationshipLineType,
   type StepEdgeId,
   _stage,
   _type,
   exact,
-  isDynamicStepsParallel,
+  isDynamicBranchCollection,
+  isDynamicStep,
   isDynamicStepsSeries,
   isViewRuleAutoLayout,
   stepEdgeId,
+  toLegacyParallel,
 } from '../../types'
 import { intersection, invariant, nonNullable, toArray, union } from '../../utils'
 import { ancestorsFqn, commonAncestor, isAncestor, parentFqn, sortParentsFirst } from '../../utils/fqn'
@@ -25,41 +34,258 @@ import { buildComputedNodes, elementModelToNodeSource } from '../utils/buildComp
 import { buildElementNotations } from '../utils/buildElementNotations'
 import { resolveGlobalRulesInDynamicView } from '../utils/resolve-global-rules'
 import { calcViewLayoutHash } from '../utils/view-hash'
+import { BranchStackManager } from './BranchStackManager'
+import { StepIdGenerator } from './StepIdGenerator'
+import type { BranchStackEntry, ComputedStep, Element } from './types'
 import { elementsFromIncludeProperties, elementsFromSteps, findRelations } from './utils'
 
-type Element<A extends AnyAux> = ElementModel<A>
-
-namespace DynamicViewCompute {
-  export interface Step<A extends AnyAux> {
-    id: StepEdgeId
-    source: Element<A>
-    target: Element<A>
-    title?: string
-    kind?: aux.RelationKind<A>
-    description?: scalar.MarkdownOrString
-    technology?: string
-    // Notes for walkthrough
-    notes?: scalar.MarkdownOrString
-    color?: Color
-    line?: RelationshipLineType
-    head?: RelationshipArrowType
-    tail?: RelationshipArrowType
-    relations: scalar.RelationId[]
-    isBackward: boolean
-    navigateTo?: aux.StrictViewId<A>
-    tags?: aux.Tags<A>
-    astPath: string
-  }
-}
-
 class DynamicViewCompute<A extends AnyAux> {
+  // New modular components
+  private stepIdGenerator = new StepIdGenerator<A>()
+  private branchManager = new BranchStackManager<A>()
+
   // Intermediate state
-  private steps = [] as DynamicViewCompute.Step<A>[]
+  private steps = [] as ComputedStep<A>[]
+  private actors: Element<A>[] = []
+  private compounds: Element<A>[] = []
 
   constructor(
     protected model: LikeC4Model<A>,
     protected view: DynamicView<A>,
   ) {}
+
+  private emitStep(
+    step: DynamicStep<A>,
+    id: StepEdgeId,
+    branchStack?: BranchStackEntry<A>[],
+  ): void {
+    const {
+      source: stepSource,
+      target: stepTarget,
+      title: stepTitle,
+      isBackward: _isBackward,
+      navigateTo: stepNavigateTo,
+      notation: _notation,
+      ...rest
+    } = step
+
+    const source = this.model.element(stepSource)
+    const sourceColumn = this.actors.indexOf(source)
+    invariant(sourceColumn >= 0, `Source ${stepSource} not found`)
+    const target = this.model.element(stepTarget)
+    const targetColumn = this.actors.indexOf(target)
+    invariant(targetColumn >= 0, `Target ${stepTarget} not found`)
+
+    // Compound elements are included as nodes (containers) in the view
+    // They provide structural context for nested elements
+    const {
+      title,
+      relations,
+      navigateTo: derivedNavigateTo,
+      ...derived
+    } = findRelations(source, target, this.view.id)
+
+    const navigateTo = isTruthy(stepNavigateTo) && stepNavigateTo !== this.view.id
+      ? stepNavigateTo
+      : derivedNavigateTo
+
+    // Use branchManager for branch tracking
+    const branchTrail = branchStack && branchStack.length > 0 ? this.branchManager.buildTrail() : undefined
+    if (branchStack && branchStack.length > 0) {
+      this.branchManager.registerStep(id)
+      this.branchManager.incrementStepCounters()
+    }
+
+    this.steps.push(exact({
+      ...derived,
+      ...rest,
+      id,
+      source,
+      target,
+      navigateTo,
+      title: stepTitle ?? title,
+      relations: relations ?? [],
+      isBackward: sourceColumn > targetColumn,
+      ...(branchTrail && { branchTrail }),
+    }))
+  }
+
+  private processLegacySteps(viewSteps: DynamicViewStep<A>[]): void {
+    const process = (step: DynamicStep<A> | DynamicStepsSeries<A>, stepNum: number, prefix?: number): number => {
+      if (isDynamicStepsSeries(step)) {
+        for (const item of step.__series) {
+          stepNum = process(item, stepNum, prefix)
+        }
+        return stepNum
+      }
+      const id = prefix
+        ? stepEdgeId(prefix, stepNum)
+        : stepEdgeId(stepNum)
+      this.emitStep(step, id)
+      return stepNum + 1
+    }
+
+    let stepNum = 1
+    for (const step of viewSteps) {
+      const legacyParallel = toLegacyParallel(step)
+      if (legacyParallel) {
+        let nestedStepNum = 1
+        for (const item of legacyParallel.__parallel ?? []) {
+          nestedStepNum = process(item, nestedStepNum, stepNum)
+        }
+        stepNum++
+        continue
+      }
+      if (isDynamicStepsSeries(step)) {
+        stepNum = process(step, stepNum)
+        continue
+      }
+      if (isDynamicStep(step)) {
+        stepNum = process(step, stepNum)
+        continue
+      }
+      if (isDynamicBranchCollection(step)) {
+        const walkBranchEntries = (entries: readonly DynamicBranchEntry<A>[], prefix?: number) => {
+          for (const entry of entries) {
+            const legacyNested = toLegacyParallel(entry as unknown as DynamicViewStep<A>)
+            if (legacyNested) {
+              let nested = 1
+              for (const nestedEntry of legacyNested.__parallel ?? []) {
+                nested = process(nestedEntry, nested, prefix ?? stepNum)
+              }
+              stepNum++
+              continue
+            }
+            if (isDynamicStepsSeries(entry)) {
+              stepNum = process(entry, stepNum, prefix)
+              continue
+            }
+            if (isDynamicStep(entry)) {
+              stepNum = process(entry, stepNum, prefix)
+              continue
+            }
+            if (isDynamicBranchCollection(entry)) {
+              for (const nestedPath of entry.paths) {
+                walkBranchEntries(nestedPath.steps, prefix)
+              }
+            }
+          }
+        }
+        for (const path of step.paths) {
+          walkBranchEntries(path.steps)
+        }
+        continue
+      }
+    }
+  }
+
+  private processBranchAwareSteps(viewSteps: DynamicViewStep<A>[]): void {
+    const emitInBranch = (step: DynamicStep<A>, rootIndex: number) => {
+      const branchStack = this.branchManager.getStack() as BranchStackEntry<A>[]
+      const id = this.stepIdGenerator.buildStepId(rootIndex, branchStack)
+      this.emitStep(step, id, branchStack)
+    }
+
+    const emitAtRoot = (step: DynamicStep<A>, rootIndex: number) => {
+      const id = this.stepIdGenerator.buildStepId(rootIndex)
+      this.emitStep(step, id)
+    }
+
+    const processLegacyParallelAtRoot = (parallel: ReturnType<typeof toLegacyParallel>, rootIndex: number): void => {
+      let nestedIndex = 1
+      for (const entry of parallel?.__parallel ?? []) {
+        if (isDynamicStepsSeries(entry)) {
+          for (const item of entry.__series) {
+            const id = this.stepIdGenerator.buildLegacyParallelStepId(rootIndex, nestedIndex)
+            this.emitStep(item, id)
+            nestedIndex++
+          }
+          continue
+        }
+        const id = this.stepIdGenerator.buildLegacyParallelStepId(rootIndex, nestedIndex)
+        this.emitStep(entry as DynamicStep<A>, id)
+        nestedIndex++
+      }
+    }
+
+    const processBranchEntries = (entries: readonly DynamicBranchEntry<A>[], rootIndex: number): void => {
+      for (const entry of entries) {
+        const legacyNested = toLegacyParallel(entry as unknown as DynamicViewStep<A>)
+        if (legacyNested) {
+          for (const nestedEntry of legacyNested.__parallel ?? []) {
+            if (isDynamicStepsSeries(nestedEntry)) {
+              for (const item of nestedEntry.__series) {
+                emitInBranch(item, rootIndex)
+              }
+            } else {
+              emitInBranch(nestedEntry as DynamicStep<A>, rootIndex)
+            }
+          }
+          continue
+        }
+        if (isDynamicStepsSeries(entry)) {
+          for (const item of entry.__series) {
+            emitInBranch(item, rootIndex)
+          }
+          continue
+        }
+        if (isDynamicStep(entry)) {
+          emitInBranch(entry, rootIndex)
+          continue
+        }
+        if (isDynamicBranchCollection(entry)) {
+          const legacy = toLegacyParallel(entry as unknown as DynamicViewStep<A>)
+          if (legacy) {
+            processBranchEntries(legacy.__parallel ?? [], rootIndex)
+            continue
+          }
+          processBranchCollection(entry, rootIndex)
+        }
+      }
+    }
+
+    const processBranchCollection = (branch: DynamicBranchCollection<A>, rootIndex: number): void => {
+      for (let pathIndex = 0; pathIndex < branch.paths.length; pathIndex++) {
+        const path = branch.paths[pathIndex]!
+        const entry: BranchStackEntry<A> = {
+          branch,
+          path,
+          pathIndex: pathIndex + 1,
+          stepCounter: 0,
+        }
+        this.branchManager.push(entry)
+        processBranchEntries(path.steps, rootIndex)
+        this.branchManager.pop()
+      }
+    }
+
+    let rootIndex = 1
+    for (const step of viewSteps) {
+      const legacyParallel = toLegacyParallel(step)
+      if (legacyParallel) {
+        processLegacyParallelAtRoot(legacyParallel, rootIndex)
+        rootIndex++
+        continue
+      }
+      if (isDynamicBranchCollection(step)) {
+        processBranchCollection(step, rootIndex)
+        rootIndex++
+        continue
+      }
+      if (isDynamicStepsSeries(step)) {
+        for (const item of step.__series) {
+          emitAtRoot(item, rootIndex)
+          rootIndex++
+        }
+        continue
+      }
+      if (isDynamicStep(step)) {
+        emitAtRoot(step, rootIndex)
+        rootIndex++
+        continue
+      }
+    }
+  }
 
   compute(): ComputedDynamicView<A> {
     const {
@@ -98,76 +324,18 @@ class DynamicViewCompute<A extends AnyAux> {
       return acc
     }, [] as Element<A>[])
 
-    // Process steps
-    const processStep = (step: DynamicStep<A> | DynamicStepsSeries<A>, stepNum: number, prefix?: number): number => {
-      if (isDynamicStepsSeries(step)) {
-        for (const s of step.__series) {
-          stepNum = processStep(s, stepNum, prefix)
-        }
-        return stepNum
-      }
-      const id = prefix ? stepEdgeId(prefix, stepNum) : stepEdgeId(stepNum)
+    this.actors = actors
+    this.compounds = compounds
 
-      const {
-        source: stepSource,
-        target: stepTarget,
-        title: stepTitle,
-        isBackward: _isBackward, // omit
-        navigateTo: stepNavigateTo,
-        notation: _notation, // omit
-        ...rest
-      } = step
+    // Check feature flag with centralized precedence logic
+    const branchFeatureEnabled = isDynamicBranchCollectionsEnabledForProject(
+      this.model.$data.project.experimental,
+    )
 
-      const source = this.model.element(stepSource)
-      const sourceColumn = actors.indexOf(source)
-      invariant(sourceColumn >= 0, `Source ${stepSource} not found`)
-      const target = this.model.element(stepTarget)
-      const targetColumn = actors.indexOf(target)
-      invariant(targetColumn >= 0, `Target ${stepTarget} not found`)
-
-      if (compounds.includes(source) || compounds.includes(target)) {
-        console.error(`Step ${source.id} -> ${target.id} because it involves a compound`)
-        // return stepNum
-      }
-
-      const {
-        title,
-        relations,
-        navigateTo: derivedNavigateTo,
-        ...derived
-      } = findRelations(source, target, this.view.id)
-
-      const navigateTo = isTruthy(stepNavigateTo) && stepNavigateTo !== this.view.id
-        ? stepNavigateTo
-        : derivedNavigateTo
-
-      this.steps.push(exact({
-        ...derived,
-        ...rest,
-        id,
-        source,
-        target,
-        navigateTo,
-        title: stepTitle ?? title,
-        relations: relations ?? [],
-        isBackward: sourceColumn > targetColumn,
-      }))
-
-      return stepNum + 1
-    }
-
-    let stepNum = 1
-    for (const step of viewSteps) {
-      if (isDynamicStepsParallel(step)) {
-        let nestedStepNum = 1
-        for (const s of step.__parallel) {
-          nestedStepNum = processStep(s, nestedStepNum, stepNum)
-        }
-        // Increment stepNum after processing all parallel steps
-        stepNum++
-        continue
-      }
-      stepNum = processStep(step, stepNum)
+    if (branchFeatureEnabled) {
+      this.processBranchAwareSteps(viewSteps)
+    } else {
+      this.processLegacySteps(viewSteps)
     }
 
     const nodesMap = buildComputedNodes(
@@ -254,7 +422,17 @@ class DynamicViewCompute<A extends AnyAux> {
           nodes: nodeNotations,
         },
       }),
+      ...(branchFeatureEnabled && this.getBranchCollectionsIfAny()),
     })
+  }
+
+  /**
+   * Finalize and return branch collections if any exist.
+   * Returns an object with branchCollections property, or an empty object if none.
+   */
+  private getBranchCollectionsIfAny() {
+    const branchCollections = this.branchManager.finalize()
+    return branchCollections.length > 0 ? { branchCollections } : {}
   }
 }
 export function computeDynamicView<M extends AnyAux>(
