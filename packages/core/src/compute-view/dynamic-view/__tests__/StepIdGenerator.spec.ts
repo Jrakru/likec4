@@ -127,23 +127,23 @@ describe('StepIdGenerator', () => {
   describe('buildLegacyParallelStepId', () => {
     it('should generate legacy parallel step ID', () => {
       const id = generator.buildLegacyParallelStepId(1, 1)
-      expect(id).toBe('step-01.1')
+      expect(id).toBe('step-01.01')
     })
 
-    it('should not pad nested index in legacy format', () => {
-      expect(generator.buildLegacyParallelStepId(1, 1)).toBe('step-01.1')
-      expect(generator.buildLegacyParallelStepId(1, 5)).toBe('step-01.5')
+    it('should pad nested index in legacy format', () => {
+      expect(generator.buildLegacyParallelStepId(1, 1)).toBe('step-01.01')
+      expect(generator.buildLegacyParallelStepId(1, 5)).toBe('step-01.05')
       expect(generator.buildLegacyParallelStepId(1, 10)).toBe('step-01.10')
     })
 
     it('should handle various root and nested indices', () => {
-      expect(generator.buildLegacyParallelStepId(1, 1)).toBe('step-01.1')
-      expect(generator.buildLegacyParallelStepId(2, 3)).toBe('step-02.3')
-      expect(generator.buildLegacyParallelStepId(10, 5)).toBe('step-10.5')
+      expect(generator.buildLegacyParallelStepId(1, 1)).toBe('step-01.01')
+      expect(generator.buildLegacyParallelStepId(2, 3)).toBe('step-02.03')
+      expect(generator.buildLegacyParallelStepId(10, 5)).toBe('step-10.05')
       expect(generator.buildLegacyParallelStepId(99, 99)).toBe('step-99.99')
     })
 
-    it('should pad root index but not nested index', () => {
+    it('should handle double-digit nested index', () => {
       const id = generator.buildLegacyParallelStepId(5, 15)
       expect(id).toBe('step-05.15')
     })
