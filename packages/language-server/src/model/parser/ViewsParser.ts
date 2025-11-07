@@ -314,6 +314,8 @@ export function ViewsParser<TBase extends WithPredicates & WithDeploymentView>(B
             if (isValid(n)) {
               if (ast.isDynamicViewParallelSteps(n)) {
                 acc.push(this.parseDynamicParallelSteps(n))
+              } else if (ast.isDynamicViewAlternateSteps(n)) {
+                acc.push(this.parseDynamicAlternateSteps(n))
               } else {
                 acc.push(this.parseDynamicStep(n))
               }
@@ -369,6 +371,16 @@ export function ViewsParser<TBase extends WithPredicates & WithDeploymentView>(B
       return {
         parallelId,
         __parallel,
+      }
+    }
+
+    parseDynamicAlternateSteps(node: ast.DynamicViewAlternateSteps): c4.DynamicStepsAlternate {
+      const alternateId = pathInsideDynamicView(node)
+      const __alternate = node.steps.map(step => this.parseDynamicStep(step))
+      invariant(isNonEmptyArray(__alternate), 'Dynamic alternate steps must have at least one step')
+      return {
+        alternateId,
+        __alternate,
       }
     }
 
@@ -544,8 +556,11 @@ export function ViewsParser<TBase extends WithPredicates & WithDeploymentView>(B
   }
 }
 
-function pathInsideDynamicView(_node: ast.AbstractDynamicStep | ast.DynamicViewParallelSteps): string {
-  let node: ast.AbstractDynamicStep | ast.DynamicViewParallelSteps | ast.DynamicViewBody = _node
+function pathInsideDynamicView(
+  _node: ast.AbstractDynamicStep | ast.DynamicViewParallelSteps | ast.DynamicViewAlternateSteps,
+): string {
+  let node: ast.AbstractDynamicStep | ast.DynamicViewParallelSteps | ast.DynamicViewAlternateSteps | ast.DynamicViewBody =
+    _node
   let path = []
   while (!ast.isDynamicViewBody(node)) {
     if (isNumber(node.$containerIndex)) {

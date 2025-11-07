@@ -294,7 +294,7 @@ DynamicViewBody: '{'
   tags=Tags?
   props+=DynamicViewProperty*
   (
-    steps+=(DynamicViewParallelSteps | DynamicViewStep) |
+    steps+=(DynamicViewParallelSteps | DynamicViewAlternateSteps | DynamicViewStep) |
     rules+=DynamicViewRule
   )*
 '}'
@@ -368,6 +368,12 @@ DynamicViewRule:
 
 DynamicViewParallelSteps:
   ('parallel'|'par') '{'
+    (steps+=DynamicViewStep)*
+  '}'
+;
+
+DynamicViewAlternateSteps:
+  ('alternate'|'alt') '{'
     (steps+=DynamicViewStep)*
   '}'
 ;

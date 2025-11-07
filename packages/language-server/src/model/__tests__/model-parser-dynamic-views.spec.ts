@@ -301,4 +301,36 @@ describe.concurrent('LikeC4ModelParser - dynamic views', () => {
       ]
     `)
   })
+
+  it('parses alternate steps', async ({ expect }) => {
+    const { validate, services } = createTestServices()
+    const { document } = await validate(source`
+        dynamic view index {
+          A -> B
+          alternate {
+            A -> C
+            A -> D
+          }
+          B -> D
+        }
+    `)
+    const { c4Views } = services.likec4.ModelParser.parse(document)
+    expect(c4Views).toHaveLength(1)
+    const view = c4Views[0]
+    invariant(view?._type === 'dynamic')
+    expect(view.steps).toHaveLength(3)
+    const [step1, alternateStep, step3] = view.steps
+    expect(step1).toHaveProperty('source', 'A')
+    expect(step1).toHaveProperty('target', 'B')
+    expect(alternateStep).toHaveProperty('__alternate')
+    expect(alternateStep).toHaveProperty('alternateId', '/steps@1')
+    invariant('__alternate' in alternateStep)
+    expect(alternateStep.__alternate).toHaveLength(2)
+    expect(alternateStep.__alternate[0]).toHaveProperty('source', 'A')
+    expect(alternateStep.__alternate[0]).toHaveProperty('target', 'C')
+    expect(alternateStep.__alternate[1]).toHaveProperty('source', 'A')
+    expect(alternateStep.__alternate[1]).toHaveProperty('target', 'D')
+    expect(step3).toHaveProperty('source', 'B')
+    expect(step3).toHaveProperty('target', 'D')
+  })
 })

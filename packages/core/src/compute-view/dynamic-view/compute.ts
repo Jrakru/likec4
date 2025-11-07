@@ -12,6 +12,7 @@ import {
   _stage,
   _type,
   exact,
+  isDynamicStepsAlternate,
   isDynamicStepsParallel,
   isDynamicStepsSeries,
   isViewRuleAutoLayout,
@@ -164,6 +165,15 @@ class DynamicViewCompute<A extends AnyAux> {
           nestedStepNum = processStep(s, nestedStepNum, stepNum)
         }
         // Increment stepNum after processing all parallel steps
+        stepNum++
+        continue
+      }
+      if (isDynamicStepsAlternate(step)) {
+        let nestedStepNum = 1
+        for (const s of step.__alternate) {
+          nestedStepNum = processStep(s, nestedStepNum, stepNum)
+        }
+        // Increment stepNum after processing all alternate steps
         stepNum++
         continue
       }
