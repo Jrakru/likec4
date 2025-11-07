@@ -140,6 +140,14 @@ export namespace LayoutedDynamicView {
       readonly height: number
     }
 
+    export interface AlternateArea {
+      readonly alternatePrefix: string
+      readonly x: number
+      readonly y: number
+      readonly width: number
+      readonly height: number
+    }
+
     export interface Step {
       readonly id: aux.EdgeId
       readonly labelBBox?: { width: number; height: number } | undefined
@@ -155,6 +163,7 @@ export namespace LayoutedDynamicView {
       readonly steps: ReadonlyArray<Step>
       readonly compounds: ReadonlyArray<Compound>
       readonly parallelAreas: ReadonlyArray<ParallelArea>
+      readonly alternateAreas: ReadonlyArray<AlternateArea>
       readonly bounds: BBox
     }
   }

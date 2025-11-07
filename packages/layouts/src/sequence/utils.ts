@@ -1,7 +1,7 @@
 import type { DiagramNode } from '@likec4/core/types'
 import { isAncestor, nonNullable, Stack } from '@likec4/core/utils'
 import { groupBy, mapValues, pipe, values } from 'remeda'
-import type { Compound, ParallelRect, Step } from './_types'
+import type { AlternateRect, Compound, ParallelRect, Step } from './_types'
 
 /**
  * From steps find boxes that must be marked as parallel on the layout
@@ -32,6 +32,41 @@ export function findParallelRects(steps: Array<Step>): Array<ParallelRect> {
             row: -Infinity,
           },
         } as ParallelRect,
+      )
+    }),
+    values(),
+  )
+}
+
+/**
+ * From steps find boxes that must be marked as alternate on the layout
+ */
+export function findAlternateRects(steps: Array<Step>): Array<AlternateRect> {
+  return pipe(
+    steps,
+    groupBy(s => s.alternatePrefix ?? undefined),
+    mapValues((steps, alternatePrefix) => {
+      return steps.reduce(
+        (acc, step) => {
+          acc.min.column = Math.min(acc.min.column, step.from.column, step.to.column)
+          acc.min.row = Math.min(acc.min.row, step.from.row, step.to.row)
+
+          acc.max.column = Math.max(acc.max.column, step.from.column, step.to.column)
+          acc.max.row = Math.max(acc.max.row, step.from.row, step.to.row)
+
+          return acc
+        },
+        {
+          alternatePrefix,
+          min: {
+            column: Infinity,
+            row: Infinity,
+          },
+          max: {
+            column: -Infinity,
+            row: -Infinity,
+          },
+        } as AlternateRect,
       )
     }),
     values(),
