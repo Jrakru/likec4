@@ -10,6 +10,7 @@ import {
 import type { Writable } from 'type-fest'
 import type { Types } from '../types'
 import {
+  SeqAlternateAreaColor,
   SeqParallelAreaColor,
   SeqZIndex,
 } from './const'
@@ -18,12 +19,12 @@ export function sequenceLayoutToXY(
   view: LayoutedDynamicView,
 ): {
   bounds: BBox
-  xynodes: Array<Types.SequenceActorNode | Types.SequenceParallelArea | Types.ViewGroupNode>
+  xynodes: Array<Types.SequenceActorNode | Types.SequenceParallelArea | Types.SequenceAlternateArea | Types.ViewGroupNode>
   xyedges: Array<Types.SequenceStepEdge>
 } {
-  const { actors, steps, compounds, parallelAreas, bounds } = view.sequenceLayout
+  const { actors, steps, compounds, parallelAreas, alternateAreas, bounds } = view.sequenceLayout
 
-  const xynodes = [] as Array<Types.SequenceActorNode | Types.SequenceParallelArea | Types.ViewGroupNode>
+  const xynodes = [] as Array<Types.SequenceActorNode | Types.SequenceParallelArea | Types.SequenceAlternateArea | Types.ViewGroupNode>
   const xyedges = [] as Array<Types.SequenceStepEdge>
 
   const getNode = (id: NodeId): DiagramNode => {
@@ -36,6 +37,10 @@ export function sequenceLayoutToXY(
 
   for (const parallelArea of parallelAreas) {
     xynodes.push(toSeqParallelArea(parallelArea, view))
+  }
+
+  for (const alternateArea of alternateAreas) {
+    xynodes.push(toSeqAlternateArea(alternateArea, view))
   }
 
   for (const actor of actors) {
@@ -125,6 +130,50 @@ function toSeqParallelArea(
       parallelPrefix,
     },
     zIndex: SeqZIndex.parallel,
+    position: {
+      x,
+      y,
+    },
+    draggable: false,
+    deletable: false,
+    selectable: false,
+    focusable: false,
+    style: {
+      pointerEvents: 'none',
+    },
+    width,
+    initialWidth: width,
+    height,
+    initialHeight: height,
+  }
+}
+
+function toSeqAlternateArea(
+  { alternatePrefix, x, y, width, height }: LayoutedDynamicView.Sequence.AlternateArea,
+  view: LayoutedDynamicView,
+): Types.SequenceAlternateArea {
+  return {
+    id: `seq-alternate-${alternatePrefix}` as NodeId,
+    type: 'seq-alternate',
+    data: {
+      id: `seq-alternate-${alternatePrefix}` as NodeId,
+      title: 'ALT',
+      technology: null,
+      color: SeqAlternateAreaColor.default,
+      shape: 'rectangle',
+      style: {},
+      tags: [],
+      x,
+      y,
+      level: 0,
+      icon: null,
+      width,
+      height,
+      description: RichText.EMPTY,
+      viewId: view.id,
+      alternatePrefix,
+    },
+    zIndex: SeqZIndex.alternate,
     position: {
       x,
       y,

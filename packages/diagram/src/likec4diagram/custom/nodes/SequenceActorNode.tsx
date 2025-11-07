@@ -145,3 +145,34 @@ export function SequenceParallelArea(props: Types.NodeProps<'seq-parallel'>) {
     </Box>
   )
 }
+
+export function SequenceAlternateArea(props: Types.NodeProps<'seq-alternate'>) {
+  return (
+    <Box
+      data-likec4-color={props.data.color}
+      css={{
+        width: '100%',
+        height: '100%',
+        border: 'default',
+        rounded: 'sm',
+        borderWidth: 1,
+        borderStyle: 'dashed', // Different from parallel - use dashed border
+        '--_color': {
+          base: 'var(--likec4-palette-stroke)',
+          _dark: '[color-mix(in srgb, var(--likec4-palette-hiContrast) 40%, var(--likec4-palette-fill))]',
+        },
+        borderColor: '[var(--_color)/40]', // Slightly more visible
+        backgroundColor: 'var(--likec4-palette-fill)/10', // Slightly more transparent
+        pointerEvents: 'none',
+        paddingLeft: '2',
+        paddingTop: '0.5',
+        fontSize: 'xs',
+        fontWeight: 'bold',
+        letterSpacing: '.75px',
+        color: '[var(--_color)/75]',
+      }}
+    >
+      ALT
+    </Box>
+  )
+}

@@ -27,6 +27,7 @@ export const CONTINUOUS_OFFSET = 22
 export const SeqZIndex = {
   compound: 0,
   parallel: 1,
+  alternate: 1,
   actor: 10,
   step: 20,
 }
@@ -34,4 +35,9 @@ export const SeqZIndex = {
 export const SeqParallelAreaColor = {
   default: 'gray',
   active: 'amber',
+} satisfies Record<string, ThemeColor>
+
+export const SeqAlternateAreaColor = {
+  default: 'blue',
+  active: 'sky',
 } satisfies Record<string, ThemeColor>
