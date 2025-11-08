@@ -6,7 +6,7 @@ import type {
 import { invariant, nonexhaustive, nonNullable } from '@likec4/core/utils'
 import * as kiwi from '@lume/kiwi'
 import { last, map, only } from 'remeda'
-import type { Compound, ParallelRect, Step } from './_types'
+import type { AlternateRect, Compound, ParallelRect, Step } from './_types'
 import {
   ACTOR_GAP,
   COLUMN_GAP,
@@ -15,7 +15,7 @@ import {
   PORT_HEIGHT,
   STEP_LABEL_MARGIN,
 } from './const'
-import { findParallelRects } from './utils'
+import { findAlternateRects, findParallelRects } from './utils'
 
 // const SELF_LOOP_ADDITIONAL_HEIGHT = 50
 
@@ -92,6 +92,14 @@ export class SequenceViewLayouter {
     y2: kiwi.Expression | kiwi.Variable
   }>
 
+  #alternateBoxes = [] as Array<{
+    alternatePrefix: string
+    x1: kiwi.Expression
+    y1: kiwi.Expression | kiwi.Variable
+    x2: kiwi.Expression
+    y2: kiwi.Expression | kiwi.Variable
+  }>
+
   constructor({
     actors,
     steps,
@@ -123,6 +131,10 @@ export class SequenceViewLayouter {
 
     for (const parallelRect of findParallelRects(steps)) {
       this.addParallelRect(parallelRect)
+    }
+
+    for (const alternateRect of findAlternateRects(steps)) {
+      this.addAlternateRect(alternateRect)
     }
 
     const firstActor = this.#actors[0]
@@ -160,6 +172,16 @@ export class SequenceViewLayouter {
   getParallelBoxes(): Array<BBox & { parallelPrefix: string }> {
     return this.#parallelBoxes.map(({ parallelPrefix, x1, y1, x2, y2 }) => ({
       parallelPrefix,
+      x: x1.value(),
+      y: y1.value(),
+      width: x2.value() - x1.value(),
+      height: y2.value() - y1.value(),
+    }))
+  }
+
+  getAlternateBoxes(): Array<BBox & { alternatePrefix: string }> {
+    return this.#alternateBoxes.map(({ alternatePrefix, x1, y1, x2, y2 }) => ({
+      alternatePrefix,
       x: x1.value(),
       y: y1.value(),
       width: x2.value() - x1.value(),
@@ -330,6 +352,41 @@ export class SequenceViewLayouter {
 
     this.#parallelBoxes.push({
       parallelPrefix,
+      x1,
+      y1,
+      x2,
+      y2,
+    })
+  }
+
+  private addAlternateRect({
+    alternatePrefix,
+    min,
+    max,
+  }: AlternateRect) {
+    const x1 = this.actorBox(min.column).centerX.minus(30)
+    const x2 = this.actorBox(max.column).centerX.plus(30)
+    const firstRow = this.#rows[min.row]
+    const lastRow = this.#rows[max.row]
+    invariant(firstRow && lastRow, `alternate box invalid minRow=${min.row} maxRow=${max.row}`)
+
+    const y1 = this.newVar(0)
+    this.put(y1).before(firstRow.y, 40)
+    const y2 = lastRow.bottom
+
+    // margin top
+    const rowBefore = min.row > 0 && this.#rows[min.row - 1]
+    if (rowBefore) {
+      this.put(y1).after(rowBefore.bottom, 16)
+    }
+
+    const rowAfter = max.row < this.#rows.length - 1 && this.#rows[max.row + 1]
+    if (rowAfter) {
+      this.put(y2).before(rowAfter.y, 16)
+    }
+
+    this.#alternateBoxes.push({
+      alternatePrefix,
       x1,
       y1,
       x2,

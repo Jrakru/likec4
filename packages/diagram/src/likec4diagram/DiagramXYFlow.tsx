@@ -33,6 +33,7 @@ const builtinNodes = {
   'view-group': memoNode(BuiltinNodes.ViewGroupNode),
   'seq-actor': memoNode(BuiltinNodes.SequenceActorNode),
   'seq-parallel': memoNode(BuiltinNodes.SequenceParallelArea),
+  'seq-alternate': memoNode(BuiltinNodes.SequenceAlternateArea),
 }
 function prepareNodeTypes(nodeTypes?: NodeRenderers): Types.NodeRenderers {
   if (!nodeTypes || isEmpty(nodeTypes)) {
@@ -46,6 +47,7 @@ function prepareNodeTypes(nodeTypes?: NodeRenderers): Types.NodeRenderers {
     'view-group': nodeTypes.viewGroup ?? builtinNodes['view-group'],
     'seq-actor': nodeTypes.seqActor ?? builtinNodes['seq-actor'],
     'seq-parallel': nodeTypes.seqParallel ?? builtinNodes['seq-parallel'],
+    'seq-alternate': nodeTypes.seqAlternate ?? builtinNodes['seq-alternate'],
   }
 }
 

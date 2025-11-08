@@ -144,9 +144,13 @@ export function EdgeId(id: string): EdgeId {
 
 export type StepEdgeIdLiteral = `step-${number}` | `step-${number}.${number}`
 export type StepEdgeId = Tagged<StepEdgeIdLiteral, 'EdgeId'>
-export function stepEdgeId(step: number, parallelStep?: number): StepEdgeId {
+export function stepEdgeId(step: number, parallelStep?: number, isAlternate?: boolean): StepEdgeId {
   const id = `step-${String(step).padStart(2, '0')}` as StepEdgeId
-  return parallelStep ? `${id}.${parallelStep}` as StepEdgeId : id
+  if (parallelStep) {
+    const separator = isAlternate ? ':' : '.'
+    return `${id}${separator}${parallelStep}` as StepEdgeId
+  }
+  return id
 }
 export const StepEdgeKind = '@step'
 

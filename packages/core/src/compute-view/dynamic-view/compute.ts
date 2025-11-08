@@ -12,6 +12,7 @@ import {
   _stage,
   _type,
   exact,
+  isDynamicStepsAlternate,
   isDynamicStepsParallel,
   isDynamicStepsSeries,
   isViewRuleAutoLayout,
@@ -99,14 +100,19 @@ class DynamicViewCompute<A extends AnyAux> {
     }, [] as Element<A>[])
 
     // Process steps
-    const processStep = (step: DynamicStep<A> | DynamicStepsSeries<A>, stepNum: number, prefix?: number): number => {
+    const processStep = (
+      step: DynamicStep<A> | DynamicStepsSeries<A>,
+      stepNum: number,
+      prefix?: number,
+      isAlternate?: boolean,
+    ): number => {
       if (isDynamicStepsSeries(step)) {
         for (const s of step.__series) {
-          stepNum = processStep(s, stepNum, prefix)
+          stepNum = processStep(s, stepNum, prefix, isAlternate)
         }
         return stepNum
       }
-      const id = prefix ? stepEdgeId(prefix, stepNum) : stepEdgeId(stepNum)
+      const id = prefix ? stepEdgeId(prefix, stepNum, isAlternate) : stepEdgeId(stepNum)
 
       const {
         source: stepSource,
@@ -164,6 +170,15 @@ class DynamicViewCompute<A extends AnyAux> {
           nestedStepNum = processStep(s, nestedStepNum, stepNum)
         }
         // Increment stepNum after processing all parallel steps
+        stepNum++
+        continue
+      }
+      if (isDynamicStepsAlternate(step)) {
+        let nestedStepNum = 1
+        for (const s of step.__alternate) {
+          nestedStepNum = processStep(s, nestedStepNum, stepNum, true)
+        }
+        // Increment stepNum after processing all alternate steps
         stepNum++
         continue
       }

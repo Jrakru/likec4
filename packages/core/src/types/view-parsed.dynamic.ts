@@ -50,6 +50,11 @@ export interface DynamicStepsParallel<A extends AnyAux = AnyAux> {
   readonly __parallel: NonEmptyReadonlyArray<DynamicStep<A> | DynamicStepsSeries<A>>
 }
 
+export interface DynamicStepsAlternate<A extends AnyAux = AnyAux> {
+  readonly alternateId: string
+  readonly __alternate: NonEmptyReadonlyArray<DynamicStep<A> | DynamicStepsSeries<A>>
+}
+
 // Get the prefix of the parallel steps
 // i.e. step-01.1 -> step-01.
 export function getParallelStepsPrefix(id: string): string | null {
@@ -59,22 +64,38 @@ export function getParallelStepsPrefix(id: string): string | null {
   return null
 }
 
+// Get the prefix of the alternate steps
+// i.e. step-01:1 -> step-01:
+export function getAlternateStepsPrefix(id: string): string | null {
+  if (isStepEdgeId(id) && id.includes(':')) {
+    return id.slice(0, id.indexOf(':') + 1)
+  }
+  return null
+}
+
 export type DynamicViewStep<A extends AnyAux = AnyAux> = ExclusiveUnion<{
   Step: DynamicStep<A>
   Series: DynamicStepsSeries<A>
   Parallel: DynamicStepsParallel<A>
+  Alternate: DynamicStepsAlternate<A>
 }>
 
 export function isDynamicStep<A extends AnyAux>(
   step: DynamicViewStep<A> | undefined,
 ): step is DynamicStep<A> {
-  return !!step && !('__series' in step || '__parallel' in step)
+  return !!step && !('__series' in step || '__parallel' in step || '__alternate' in step)
 }
 
 export function isDynamicStepsParallel<A extends AnyAux>(
   step: DynamicViewStep<A> | undefined,
 ): step is DynamicStepsParallel<A> {
   return !!step && '__parallel' in step && isArray(step.__parallel)
+}
+
+export function isDynamicStepsAlternate<A extends AnyAux>(
+  step: DynamicViewStep<A> | undefined,
+): step is DynamicStepsAlternate<A> {
+  return !!step && '__alternate' in step && isArray(step.__alternate)
 }
 
 export function isDynamicStepsSeries<A extends AnyAux>(

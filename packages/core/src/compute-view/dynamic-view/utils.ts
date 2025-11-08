@@ -13,6 +13,7 @@ import {
   type RelationshipLineType,
   type ViewRuleGlobalStyle,
   exact,
+  isDynamicStepsAlternate,
   isDynamicStepsParallel,
   isDynamicStepsSeries,
   isViewRulePredicate,
@@ -46,6 +47,21 @@ export const flattenSteps = <A extends Any>(s: DynamicViewStep<A>): DynamicStep<
     const heads = [] as DynamicStep<A>[]
     const tails = [] as DynamicStep<A>[]
     for (const step of s.__parallel) {
+      if (isDynamicStepsSeries(step)) {
+        const [head, ...tail] = step.__series
+        heads.push(head)
+        tails.push(...tail)
+      } else {
+        heads.push(step)
+      }
+    }
+    return [...heads, ...tails]
+  }
+  if (isDynamicStepsAlternate(s)) {
+    // Alternate steps are flattened similar to parallel - all branches are added sequentially
+    const heads = [] as DynamicStep<A>[]
+    const tails = [] as DynamicStep<A>[]
+    for (const step of s.__alternate) {
       if (isDynamicStepsSeries(step)) {
         const [head, ...tail] = step.__series
         heads.push(head)

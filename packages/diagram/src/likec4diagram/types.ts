@@ -106,6 +106,13 @@ export namespace Types {
     }
   >
 
+  export type SequenceAlternateAreaData = Simplify<
+    & LeafNodeData
+    & {
+      alternatePrefix: string
+    }
+  >
+
   export type CompoundNodeData = Simplify<
     & BaseNodeData
     & NonOptional<
@@ -170,6 +177,7 @@ export namespace Types {
 
   export type SequenceActorNode = BaseNode<SequenceActorNodeData, 'seq-actor'>
   export type SequenceParallelArea = BaseNode<SequenceParallelAreaData, 'seq-parallel'>
+  export type SequenceAlternateArea = BaseNode<SequenceAlternateAreaData, 'seq-alternate'>
 
   export type CompoundElementNode = BaseNode<CompoundElementNodeData, 'compound-element'>
   export type CompoundDeploymentNode = BaseNode<CompoundDeploymentNodeData, 'compound-deployment'>
@@ -183,6 +191,7 @@ export namespace Types {
     | ViewGroupNode
     | SequenceActorNode
     | SequenceParallelArea
+    | SequenceAlternateArea
 
   export type NodeType = AnyNode['type']
 
@@ -194,6 +203,7 @@ export namespace Types {
     ViewGroupNodeData: ViewGroupNodeData
     SequenceActorNodeData: SequenceActorNodeData
     SequenceParallelAreaData: SequenceParallelAreaData
+    SequenceAlternateAreaData: SequenceAlternateAreaData
   }>
 
   export type Node<Type extends NodeType = NodeType> = Extract<AnyNode, { type: Type }>

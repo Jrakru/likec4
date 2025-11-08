@@ -3,6 +3,7 @@ import {
   type DiagramNode,
   type LayoutedDynamicView,
   type NodeId,
+  getAlternateStepsPrefix,
   getParallelStepsPrefix,
   isStepEdgeId,
 } from '@likec4/core/types'
@@ -66,9 +67,10 @@ export function calcSequenceLayout(view: LayoutedDynamicView): LayoutedDynamicVi
     const isSelfLoop = source === target
     const isBack = sourceColumn > targetColumn
     const parallelPrefix = getParallelStepsPrefix(edge.id)
+    const alternatePrefix = getAlternateStepsPrefix(edge.id)
 
     let isContinuing = false
-    if (prevStep && prevStep.target == source && prevStep.parallelPrefix === parallelPrefix) {
+    if (prevStep && prevStep.target == source && prevStep.parallelPrefix === parallelPrefix && prevStep.alternatePrefix === alternatePrefix) {
       isContinuing = prevStep.isSelfLoop !== isSelfLoop || prevStep.isBack === isBack
     }
 
@@ -90,6 +92,7 @@ export function calcSequenceLayout(view: LayoutedDynamicView): LayoutedDynamicVi
       isSelfLoop,
       isBack,
       parallelPrefix,
+      alternatePrefix,
       offset: isContinuing ? (prevStep?.offset ?? 0) + CONTINUOUS_OFFSET : 0,
       source,
       target,
@@ -143,6 +146,7 @@ export function calcSequenceLayout(view: LayoutedDynamicView): LayoutedDynamicVi
       }),
     })),
     parallelAreas: layout.getParallelBoxes(),
+    alternateAreas: layout.getAlternateBoxes(),
     bounds,
   }
 }

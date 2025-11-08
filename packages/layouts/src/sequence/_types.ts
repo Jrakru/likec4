@@ -20,6 +20,7 @@ export type Step = {
   isSelfLoop: boolean
   isBack: boolean
   parallelPrefix: string | null
+  alternatePrefix: string | null
   offset: number // offset for continuing edges
   edge: DiagramEdge
 }
@@ -34,6 +35,18 @@ export type Compound = {
 
 export type ParallelRect = {
   parallelPrefix: string
+  min: {
+    column: number
+    row: number
+  }
+  max: {
+    column: number
+    row: number
+  }
+}
+
+export type AlternateRect = {
+  alternatePrefix: string
   min: {
     column: number
     row: number
@@ -80,10 +93,19 @@ export interface SequenceParallelArea {
   height: number
 }
 
+export interface SequenceAlternateArea {
+  alternatePrefix: string
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 export interface SequenceViewLayout {
   id: ViewId
   actors: Array<SequenceActor>
   compounds: Array<SequenceCompound>
   parallelAreas: Array<SequenceParallelArea>
+  alternateAreas: Array<SequenceAlternateArea>
   bounds: BBox
 }
