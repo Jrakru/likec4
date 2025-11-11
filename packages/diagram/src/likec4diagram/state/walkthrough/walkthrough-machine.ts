@@ -128,20 +128,23 @@ function applyUpdateFromInput(
   if (prevActive && input.stepIds.includes(prevActive.stepId)) {
     // Preserve existing active step if it still exists.
     nextActive = createActive(prevActive.stepId, prevActive.branch)
-  } else {
-    // Otherwise, start from the first available step.
-    const stepId = resolveStartStep(input)
-    if (stepId) {
-      nextActive = createActive(stepId)
-    }
   }
+  // If there was no previous active step, stay idle (don't auto-start).
+
+  const nextState: WalkthroughState = nextActive
+    ? {
+      ...prev.state,
+      active: nextActive,
+    }
+    : {
+      completedSteps: prev.state.completedSteps,
+      completedPaths: prev.state.completedPaths,
+      // no active field - stay idle
+    }
 
   return {
     input,
-    state: {
-      ...prev.state,
-      ...(nextActive ? { active: nextActive } : {}),
-    },
+    state: nextState,
   }
 }
 

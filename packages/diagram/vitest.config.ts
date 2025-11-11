@@ -11,6 +11,6 @@ export default defineProject({
   },
   test: {
     name: 'diagram',
-    environment: 'jsdom',
+    environment: 'happy-dom',
   },
 })
