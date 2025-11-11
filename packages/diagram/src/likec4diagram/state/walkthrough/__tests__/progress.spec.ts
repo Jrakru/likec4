@@ -179,16 +179,13 @@ describe('walkthrough/progress', () => {
 
       const progress = getBranchProgress(input, s, 'b2').sort((a, b) => a.pathId.localeCompare(b.pathId))
 
+      // According to the contract: only fully-complete paths appear in the result.
+      // p1 (s2+s3) is complete; p2 (s2+s4) is not (s4 missing), so p2 does not appear.
       expect(progress).toEqual([
         {
           branchId: 'b2',
           pathId: 'p1',
           isComplete: true,
-        },
-        {
-          branchId: 'b2',
-          pathId: 'p2',
-          isComplete: false,
         },
       ])
     })

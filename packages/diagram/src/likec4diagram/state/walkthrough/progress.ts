@@ -66,23 +66,26 @@ export function getBranchProgress(
   }
 
   const collection = collections.find(c => c.branchId === branchId)
-  if (!collection) {
-    return []
-  }
-
-  if (!collection.paths || collection.paths.length === 0) {
+  if (!collection || !collection.paths || collection.paths.length === 0) {
     return []
   }
 
   // Reuse the same semantics as computeCompletedPaths to stay consistent.
   const completedPathKeys = computeCompletedPaths(input, state)
 
-  return collection.paths.map(path => {
+  // Only surface paths that are actually complete.
+  // If no paths are complete for this branch, return [] so callers can decide
+  // whether to display this branch at all.
+  const result: BranchPathProgress[] = []
+  for (const path of collection.paths) {
     const key = `${collection.branchId}:${path.pathId}`
-    return {
-      branchId: collection.branchId,
-      pathId: path.pathId,
-      isComplete: completedPathKeys.has(key),
+    if (completedPathKeys.has(key)) {
+      result.push({
+        branchId: collection.branchId,
+        pathId: path.pathId,
+        isComplete: true,
+      })
     }
-  })
+  }
+  return result
 }

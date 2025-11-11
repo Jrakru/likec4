@@ -21,21 +21,35 @@ describe('walkthrough hooks - provider and core actions', () => {
   it('useWalkthrough throws outside provider', () => {
     const { result } = renderHook(() => {
       // eslint-disable-next-line react-hooks/rules-of-hooks
-      return useWalkthrough()
+      try {
+        useWalkthrough()
+        return null
+      } catch (e) {
+        return e
+      }
     })
 
-    expect(result.error).toBeInstanceOf(Error)
-    expect(String(result.error?.message)).toContain('WalkthroughProvider')
+    expect(result.current).toBeInstanceOf(Error)
+    expect(String((result.current as Error | null)?.message ?? '')).toContain(
+      'WalkthroughProvider',
+    )
   })
 
   it('useWalkthroughActions throws outside provider', () => {
     const { result } = renderHook(() => {
       // eslint-disable-next-line react-hooks/rules-of-hooks
-      return useWalkthroughActions()
+      try {
+        useWalkthroughActions()
+        return null
+      } catch (e) {
+        return e
+      }
     })
 
-    expect(result.error).toBeInstanceOf(Error)
-    expect(String(result.error?.message)).toContain('WalkthroughProvider')
+    expect(result.current).toBeInstanceOf(Error)
+    expect(String((result.current as Error | null)?.message ?? '')).toContain(
+      'WalkthroughProvider',
+    )
   })
 
   it('exposes initial idle state until START is called', () => {

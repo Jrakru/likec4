@@ -53,6 +53,9 @@ export function useWalkthroughCompletion(): UseWalkthroughCompletionResult {
       for (const collection of collections) {
         if (!branches.has(collection.branchId)) {
           const progress = getBranchProgress(input, state, collection.branchId)
+          // Only surface branches that have at least some path-level signal.
+          // This keeps the map empty when there is no completion at all and
+          // avoids cluttering consumers with purely configuration data.
           if (progress.length > 0) {
             branches.set(collection.branchId, progress)
           }

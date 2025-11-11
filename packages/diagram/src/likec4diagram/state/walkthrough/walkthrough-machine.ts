@@ -293,6 +293,18 @@ export const walkthroughMachine = setup({
           actions: assign(({ event, context }) => applyUpdateFromInput(context, event.input)),
         },
         SYNC_FROM_URL: {
+          target: 'active.navigating',
+          guard: ({ event, context }) => {
+            // Only transition if the encoded token is valid and matches our viewId
+            const decoded = decodeWalkthroughState(event.encoded)
+            if (!decoded.viewId || decoded.viewId !== context.input.viewId) {
+              return false
+            }
+            const stepId = decoded.stepId && context.input.stepIds.includes(decoded.stepId)
+              ? decoded.stepId
+              : undefined
+            return !!stepId
+          },
           actions: assign(({ event, context }) => applySyncFromUrl(context, event.encoded)),
         },
       },
@@ -302,15 +314,20 @@ export const walkthroughMachine = setup({
       initial: 'navigating',
       on: {
         STOP: {
-          target: 'idle',
-          actions: assign(({ context }) => ({
-            input: context.input,
-            state: {
+          target: '#walkthrough.idle',
+          actions: assign(({ context }) => {
+            // Explicitly construct next context without active field to ensure
+            // the machine transitions to idle state with no active step/branchRef.
+            const nextState = createWalkthroughState({
               completedSteps: context.state.completedSteps,
               completedPaths: context.state.completedPaths,
-              // omit active - explicitly not including it
-            },
-          })),
+              // no active parameter -> idle with no active field
+            })
+            return {
+              input: context.input,
+              state: nextState,
+            }
+          }),
         },
 
         UPDATE_FROM_INPUT: {
@@ -343,9 +360,7 @@ export const walkthroughMachine = setup({
             SELECT_BRANCH_PATH: {
               // Selecting a branch path at a decision step moves us into navigating.
               target: 'navigating',
-              actions: assign(({ event, context }) =>
-                applySelectBranchPath(context, event.branchId, event.pathId)
-              ),
+              actions: assign(({ event, context }) => applySelectBranchPath(context, event.branchId, event.pathId)),
             },
             // Internal from START when first step is a decision
             INTERNAL__ENTER_BRANCH_DECISION: {
@@ -357,9 +372,7 @@ export const walkthroughMachine = setup({
           on: {
             SELECT_BRANCH_PATH: {
               target: 'navigating',
-              actions: assign(({ event, context }) =>
-                applySelectBranchPath(context, event.branchId, event.pathId)
-              ),
+              actions: assign(({ event, context }) => applySelectBranchPath(context, event.branchId, event.pathId)),
             },
             NEXT: {
               target: 'navigating',
