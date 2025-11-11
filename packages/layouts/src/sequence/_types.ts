@@ -101,11 +101,46 @@ export interface SequenceAlternateArea {
   height: number
 }
 
+/**
+ * Branch overlays computed from unified branching metadata.
+ *
+ * These are optional, non-breaking overlays:
+ * - When absent or empty, consumers fall back to legacy prefixes/areas.
+ * - When present, they provide stable branch-aware bounds keyed by branchId/pathId.
+ */
+export type SequenceBranchArea = {
+  branchId: string
+  kind: 'alternate' | 'parallel'
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export type SequenceBranchPath = {
+  branchId: string
+  pathId: string
+  index: number
+  isDefault: boolean
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 export interface SequenceViewLayout {
   id: ViewId
   actors: Array<SequenceActor>
   compounds: Array<SequenceCompound>
   parallelAreas: Array<SequenceParallelArea>
   alternateAreas: Array<SequenceAlternateArea>
+  /**
+   * Optional branch overlays keyed by branchId/pathId.
+   * Always present as arrays for convenience; may be empty when:
+   * - unified branching feature flag is disabled, or
+   * - no compatible branch metadata is provided.
+   */
+  branchAreas: Array<SequenceBranchArea>
+  branchPaths: Array<SequenceBranchPath>
   bounds: BBox
 }

@@ -289,6 +289,52 @@ export function ViewsParser<TBase extends WithPredicates & WithDeploymentView>(B
 
       const variant = find(props, ast.isDynamicViewDisplayVariantProperty)?.value
 
+      const steps = (body.steps ?? []).reduce((acc, n) => {
+        try {
+          // Steps/blocks inside DynamicViewBody are limited by the grammar,
+          // but we guard conservatively and only parse the known dynamic step variants.
+          if (
+            !ast.isDynamicViewParallelSteps(n)
+            && !ast.isDynamicViewAlternateSteps(n)
+            && !ast.isDynamicViewStep(n)
+          ) {
+            return acc
+          }
+          if (!isValid(n as any)) {
+            return acc
+          }
+          if (ast.isDynamicViewParallelSteps(n)) {
+            acc.push(this.parseDynamicParallelSteps(n))
+          } else if (ast.isDynamicViewAlternateSteps(n)) {
+            acc.push(this.parseDynamicAlternateSteps(n))
+          } else {
+            acc.push(this.parseDynamicStep(n))
+          }
+        } catch (e) {
+          logger.warn(loggable(e))
+        }
+        return acc
+      }, [] as c4.DynamicViewStep[])
+
+      const branchDefinitions = (body.steps ?? [])
+        .flatMap((n, index) => {
+          // DynamicViewBranchBlock instances are identified structurally via the grammar:
+          // we rely on `kind` + `paths` shape to avoid a hard AST type dependency here.
+          if (!(typeof (n as any).kind === 'string' && Array.isArray((n as any).paths)) || !isValid(n as any)) {
+            return []
+          }
+          try {
+            return this.parseDynamicBranchBlock(n as any, {
+              enclosingAstPath: astPath,
+              containerProperty: 'steps',
+              containerIndex: index,
+            })
+          } catch (e) {
+            logger.warn(loggable(e))
+            return []
+          }
+        })
+
       return {
         [c4._type]: 'dynamic',
         id: id as c4.ViewId,
@@ -307,26 +353,139 @@ export function ViewsParser<TBase extends WithPredicates & WithDeploymentView>(B
               logger.warn(loggable(e))
               return []
             }
-          }, [] as Array<c4.DynamicViewRule>),
+          }),
         ],
-        steps: body.steps.reduce((acc, n) => {
-          try {
-            if (isValid(n)) {
-              if (ast.isDynamicViewParallelSteps(n)) {
-                acc.push(this.parseDynamicParallelSteps(n))
-              } else if (ast.isDynamicViewAlternateSteps(n)) {
-                acc.push(this.parseDynamicAlternateSteps(n))
-              } else {
-                acc.push(this.parseDynamicStep(n))
-              }
-            }
-          } catch (e) {
-            logger.warn(loggable(e))
-          }
-          return acc
-        }, [] as c4.DynamicViewStep[]),
+        steps,
+        ...(isNonEmptyArray(branchDefinitions) && { branchDefinitions }),
         ...(manualLayout && { manualLayout }),
       }
+    }
+
+    /**
+     * Parse a `DynamicViewBranchBlock` (introduced in like-c4.langium) into an internal
+     * branchDefinitions entry. This representation is:
+     * - independent from core's ComputedBranchCollection
+     * - additive and only used when the new syntax is present
+     * - structurally sufficient to later construct ComputedBranchCollection.
+     */
+    parseDynamicBranchBlock(
+      node: {
+        kind: string
+        branchId?: string
+        paths: Array<{
+          pathId: string
+          isDefault?: string
+          title?: ast.MarkdownOrString
+          steps: unknown[]
+        }>
+      },
+      ctx: {
+        enclosingAstPath: string
+        containerProperty: string
+        containerIndex: number
+      },
+    ): Array<{
+      branchId: string
+      kind: 'alternate' | 'parallel'
+      decisionStepId?: string
+      paths: Array<{
+        pathId: string
+        pathIndex: number
+        isDefaultPath?: boolean
+        pathTitle?: string
+        stepRefs: string[]
+        nestedBranches?: Array<{
+          branchId: string
+          kind: 'alternate' | 'parallel'
+          decisionStepId?: string
+          paths: Array<{
+            pathId: string
+            pathIndex: number
+            isDefaultPath?: boolean
+            pathTitle?: string
+            stepRefs: string[]
+          }>
+        }>
+      }>
+    }> {
+      const kindToken = node.kind
+      const kind: 'alternate' | 'parallel' = kindToken === 'alternate' || kindToken === 'alt' ? 'alternate' : 'parallel'
+
+      const branchId = node.branchId || branchIdFromPath(ctx, kind)
+      const decisionStepId = decisionStepIdFromContext(ctx)
+
+      const paths = node.paths.map((pathNode, pathIndex) => {
+        const pathId = pathNode.pathId
+        const isDefaultPath = !!pathNode.isDefault
+        const pathTitle = pathNode.title ? toSingleLine(pathNode.title) ?? undefined : undefined
+
+        const stepRefs: string[] = []
+        const nestedBranches: Array<{
+          branchId: string
+          kind: 'alternate' | 'parallel'
+          decisionStepId?: string
+          paths: Array<{
+            pathId: string
+            pathIndex: number
+            isDefaultPath?: boolean
+            pathTitle?: string
+            stepRefs: string[]
+          }>
+        }> = []
+
+        pathNode.steps.forEach((stepNode, idx) => {
+          // For now we capture stable AST-path-like identifiers for steps/blocks.
+          if (
+            ast.isDynamicViewStep(stepNode)
+            || ast.isDynamicViewParallelSteps(stepNode)
+            || ast.isDynamicViewAlternateSteps(stepNode)
+          ) {
+            stepRefs.push(branchStepRef(ctx, pathIndex, idx))
+          } else if (typeof (stepNode as any).kind === 'string' && Array.isArray((stepNode as any).paths)) {
+            // Nested branch block.
+            const nested = this.parseDynamicBranchBlock(stepNode as any, {
+              enclosingAstPath:
+                `${ctx.enclosingAstPath}/${ctx.containerProperty}@${ctx.containerIndex}/paths@${pathIndex}`,
+              containerProperty: 'steps',
+              containerIndex: idx,
+            })
+            if (isNonEmptyArray(nested)) {
+              nestedBranches.push(...nested)
+            }
+          }
+        })
+
+        return {
+          pathId,
+          pathIndex,
+          ...(isDefaultPath && { isDefaultPath }),
+          ...(pathTitle && { pathTitle }),
+          stepRefs,
+          ...(isNonEmptyArray(nestedBranches) && {
+            nestedBranches: nestedBranches as {
+              branchId: string
+              kind: 'alternate' | 'parallel'
+              decisionStepId?: string
+              paths: Array<{
+                pathId: string
+                pathIndex: number
+                isDefaultPath?: boolean
+                pathTitle?: string
+                stepRefs: string[]
+              }>
+            }[],
+          }),
+        }
+      })
+
+      return [
+        {
+          branchId,
+          kind,
+          ...(decisionStepId && { decisionStepId }),
+          paths,
+        },
+      ]
     }
 
     parseDynamicViewRule(astRule: ast.DynamicViewRule): c4.DynamicViewRule {
@@ -559,20 +718,69 @@ export function ViewsParser<TBase extends WithPredicates & WithDeploymentView>(B
 function pathInsideDynamicView(
   _node: ast.AbstractDynamicStep | ast.DynamicViewParallelSteps | ast.DynamicViewAlternateSteps,
 ): string {
-  let node: ast.AbstractDynamicStep | ast.DynamicViewParallelSteps | ast.DynamicViewAlternateSteps | ast.DynamicViewBody =
-    _node
-  let path = []
+  let node:
+    | ast.AbstractDynamicStep
+    | ast.DynamicViewParallelSteps
+    | ast.DynamicViewAlternateSteps
+    | ast.DynamicViewBody = _node
+  const path: string[] = []
   while (!ast.isDynamicViewBody(node)) {
     if (isNumber(node.$containerIndex)) {
-      path.unshift(
-        `@${node.$containerIndex}`,
-      )
+      path.unshift(`@${node.$containerIndex}`)
     }
-    path.unshift(
-      `/${node.$containerProperty ?? '__invalid__'}`,
-    )
+    path.unshift(`/${node.$containerProperty ?? '__invalid__'}`)
     node = node.$container
   }
-
   return path.join('')
+}
+
+/**
+ * Build a stable synthetic branch id when no explicit branchId is provided.
+ * This is based purely on the AST path and kind and is deterministic.
+ */
+function branchIdFromPath(
+  ctx: {
+    enclosingAstPath: string
+    containerProperty: string
+    containerIndex: number
+  },
+  kind: 'alternate' | 'parallel',
+): string {
+  return `${ctx.enclosingAstPath}/${ctx.containerProperty}@${ctx.containerIndex}/${kind}`
+}
+
+/**
+ * Conservatively infer the decision step location for a branch:
+ * we point at the previous sibling step position if available.
+ * This is an AST-position hint only; compute may refine it later.
+ */
+function decisionStepIdFromContext(
+  ctx: {
+    enclosingAstPath: string
+    containerProperty: string
+    containerIndex: number
+  },
+): string | undefined {
+  if (ctx.containerIndex <= 0) {
+    return undefined
+  }
+  const index = ctx.containerIndex - 1
+  return `${ctx.enclosingAstPath}/${ctx.containerProperty}@${index}`
+}
+
+/**
+ * Build a stable reference for a step (or nested block) inside a branch path body.
+ * This is intentionally generic and AST-position-based; mapping to concrete StepEdgeIds
+ * is left for the compute layer.
+ */
+function branchStepRef(
+  ctx: {
+    enclosingAstPath: string
+    containerProperty: string
+    containerIndex: number
+  },
+  pathIndex: number,
+  stepIndex: number,
+): string {
+  return `${ctx.enclosingAstPath}/${ctx.containerProperty}@${ctx.containerIndex}/paths@${pathIndex}/steps@${stepIndex}`
 }

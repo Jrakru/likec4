@@ -33,7 +33,14 @@ export function sequenceViewToXY(
   view: LayoutedDynamicView,
 ): {
   bounds: BBox
-  xynodes: Array<Types.SequenceActorNode | Types.SequenceParallelArea | Types.ViewGroupNode>
+  xynodes: Array<
+    | Types.SequenceActorNode
+    | Types.SequenceParallelArea
+    | Types.SequenceAlternateArea
+    | Types.SequenceBranchAreaNode
+    | Types.SequenceBranchPathNode
+    | Types.ViewGroupNode
+  >
   xyedges: Array<Types.SequenceStepEdge>
 } {
   const actors = [] as Array<DiagramNode>
@@ -144,21 +151,34 @@ export function sequenceViewToXY(
 
   const bounds = layout.getViewBounds()
 
+  const xynodes: Array<
+    | Types.SequenceActorNode
+    | Types.SequenceParallelArea
+    | Types.SequenceAlternateArea
+    | Types.SequenceBranchAreaNode
+    | Types.SequenceBranchPathNode
+    | Types.ViewGroupNode
+  > = [
+    ...layout.getCompoundBoxes().map((box, i) => toCompoundArea(box, i, view)),
+    ...layout.getParallelBoxes().map(box => toSeqParallelArea(box, view)),
+    // Branch overlays from layout (if present). These are purely visual and
+    // safe to ignore by consumers that don't know about them.
+    ...layout.getBranchAreas().map(area => toSeqBranchAreaNode(area, view)),
+    ...layout.getBranchPaths().map(path => toSeqBranchPathNode(path, view)),
+    ...actors.map(actor =>
+      toSeqActorNode({
+        actor,
+        ports: actorPorts.get(actor),
+        bounds,
+        layout,
+        view,
+      })
+    ),
+  ]
+
   return {
     bounds,
-    xynodes: [
-      ...layout.getCompoundBoxes().map((box, i) => toCompoundArea(box, i, view)),
-      ...layout.getParallelBoxes().map(box => toSeqParallelArea(box, view)),
-      ...actors.map(actor =>
-        toSeqActorNode({
-          actor,
-          ports: actorPorts.get(actor),
-          bounds,
-          layout,
-          view,
-        })
-      ),
-    ],
+    xynodes,
     xyedges: steps.map(({ id, edge, ...step }): Types.SequenceStepEdge => ({
       id: id,
       type: 'seq-step',
@@ -268,6 +288,119 @@ function toSeqParallelArea(
       x,
       y,
     },
+    draggable: false,
+    deletable: false,
+    selectable: false,
+    focusable: false,
+    style: {
+      pointerEvents: 'none',
+    },
+    width,
+    initialWidth: width,
+    height,
+    initialHeight: height,
+  }
+}
+
+function toSeqBranchAreaNode(
+  area: {
+    branchId: string
+    kind: 'alternate' | 'parallel'
+    x: number
+    y: number
+    width: number
+    height: number
+  },
+  view: LayoutedDynamicView,
+): Types.SequenceBranchAreaNode {
+  const { branchId, kind, x, y, width, height } = area
+  return {
+    id: `branch-area-${branchId}` as NodeId,
+    type: 'seq-branch-area',
+    data: {
+      id: `branch-area-${branchId}` as NodeId,
+      title: kind === 'parallel' ? 'PARALLEL' : 'ALTERNATE',
+      technology: null,
+      color: SeqParallelAreaColor.default,
+      shape: 'rectangle',
+      style: {},
+      tags: [],
+      x,
+      y,
+      level: 0,
+      icon: null,
+      width,
+      height,
+      description: RichText.EMPTY,
+      viewId: view.id,
+      branchId,
+      kind,
+    },
+    zIndex: SeqZIndex.parallel,
+    position: { x, y },
+    draggable: false,
+    deletable: false,
+    selectable: false,
+    focusable: false,
+    style: {
+      pointerEvents: 'none',
+    },
+    width,
+    initialWidth: width,
+    height,
+    initialHeight: height,
+  }
+}
+
+function toSeqBranchPathNode(
+  path: {
+    branchId: string
+    pathId: string
+    index: number
+    isDefault: boolean
+    x: number
+    y: number
+    width: number
+    height: number
+  },
+  view: LayoutedDynamicView,
+): Types.SequenceBranchPathNode {
+  const {
+    branchId,
+    pathId,
+    index,
+    isDefault,
+    x,
+    y,
+    width,
+    height,
+  } = path
+  return {
+    id: `branch-path-${branchId}-${pathId}` as NodeId,
+    type: 'seq-branch-path',
+    data: {
+      id: `branch-path-${branchId}-${pathId}` as NodeId,
+      title: isDefault ? 'DEFAULT' : '',
+      technology: null,
+      color: SeqParallelAreaColor.default,
+      shape: 'rectangle',
+      style: {},
+      tags: [],
+      x,
+      y,
+      level: 0,
+      icon: null,
+      width,
+      height,
+      description: RichText.EMPTY,
+      viewId: view.id,
+      branchId,
+      pathId,
+      index,
+      isDefault,
+    },
+    zIndex: SeqZIndex.parallel,
+    position: { x, y },
     draggable: false,
     deletable: false,
     selectable: false,

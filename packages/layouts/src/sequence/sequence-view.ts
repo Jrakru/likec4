@@ -9,10 +9,17 @@ import {
 } from '@likec4/core/types'
 import { DefaultMap, invariant, nonNullable } from '@likec4/core/utils'
 import { flat, groupByProp, hasAtLeast, map, mapValues, pipe, values } from 'remeda'
-import type { SequenceActor, SequenceActorStepPort, Step } from './_types'
+import type {
+  SequenceActor,
+  SequenceActorStepPort,
+  SequenceBranchArea,
+  SequenceBranchPath,
+  Step,
+} from './_types'
 import {
   CONTINUOUS_OFFSET,
 } from './const'
+import type { SequenceBranchCollectionInput } from './layouter'
 import { SequenceViewLayouter } from './layouter'
 import { buildCompounds } from './utils'
 
@@ -21,6 +28,26 @@ type Port = {
   row: number
   type: 'source' | 'target'
   position: 'left' | 'right' | 'top' | 'bottom'
+}
+
+/**
+ * Map optional unified branching metadata from LayoutedDynamicView into the
+ * minimal local SequenceBranchCollectionInput shape understood by the layouter.
+ *
+ * We intentionally treat `view` as `any` here to avoid tight coupling to core.
+ * If no compatible metadata is present, this returns undefined.
+ */
+function toBranchCollections(
+  view: LayoutedDynamicView,
+): SequenceBranchCollectionInput | undefined {
+  const anyView = view as any
+  const collections = anyView.branchCollections as
+    | SequenceBranchCollectionInput
+    | undefined
+  if (!collections || collections.length === 0) {
+    return undefined
+  }
+  return collections
 }
 
 export function calcSequenceLayout(view: LayoutedDynamicView): LayoutedDynamicView.Sequence.Layout {
@@ -70,7 +97,10 @@ export function calcSequenceLayout(view: LayoutedDynamicView): LayoutedDynamicVi
     const alternatePrefix = getAlternateStepsPrefix(edge.id)
 
     let isContinuing = false
-    if (prevStep && prevStep.target == source && prevStep.parallelPrefix === parallelPrefix && prevStep.alternatePrefix === alternatePrefix) {
+    if (
+      prevStep && prevStep.target == source && prevStep.parallelPrefix === parallelPrefix &&
+      prevStep.alternatePrefix === alternatePrefix
+    ) {
       isContinuing = prevStep.isSelfLoop !== isSelfLoop || prevStep.isBack === isBack
     }
 
@@ -109,10 +139,14 @@ export function calcSequenceLayout(view: LayoutedDynamicView): LayoutedDynamicVi
     actorPorts.get(target).push({ step, row, type: 'target', position: isBack || isSelfLoop ? 'right' : 'left' })
   }
 
+  const branchCollections = toBranchCollections(view)
+
   const layout = new SequenceViewLayouter({
     actors,
     steps,
     compounds: buildCompounds(actors, view.nodes),
+    // Optional, only influences branchAreas/branchPaths overlays.
+    ...(branchCollections && { branchCollections }),
   })
 
   const bounds = layout.getViewBounds()
@@ -131,6 +165,15 @@ export function calcSequenceLayout(view: LayoutedDynamicView): LayoutedDynamicVi
     flat(),
   )
 
+  // Legacy fields
+  const parallelAreas = layout.getParallelBoxes()
+  const alternateAreas = layout.getAlternateBoxes()
+
+  // Branch overlays are always present as arrays on the layout contract
+  // but will be empty unless branchCollections metadata was provided.
+  const branchAreas: SequenceBranchArea[] = layout.getBranchAreas()
+  const branchPaths: SequenceBranchPath[] = layout.getBranchPaths()
+
   return {
     actors: actors.map(actor => toSeqActor({ actor, ports: actorPorts.get(actor), layout })),
     compounds,
@@ -145,10 +188,15 @@ export function calcSequenceLayout(view: LayoutedDynamicView): LayoutedDynamicVi
         },
       }),
     })),
-    parallelAreas: layout.getParallelBoxes(),
-    alternateAreas: layout.getAlternateBoxes(),
+    parallelAreas,
+    alternateAreas,
+    // New overlays: always arrays on the layout contract; populated only when
+    // upstream metadata is present. When absent they are empty, preserving
+    // backward-compatible behaviour.
+    branchAreas,
+    branchPaths,
     bounds,
-  }
+  } as LayoutedDynamicView.Sequence.Layout
 }
 
 function toSeqActor({ actor, ports, layout }: {

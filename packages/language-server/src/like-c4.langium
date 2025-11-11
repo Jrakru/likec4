@@ -294,10 +294,32 @@ DynamicViewBody: '{'
   tags=Tags?
   props+=DynamicViewProperty*
   (
-    steps+=(DynamicViewParallelSteps | DynamicViewAlternateSteps | DynamicViewStep) |
+    steps+=(DynamicViewBranchBlock | DynamicViewParallelSteps | DynamicViewAlternateSteps | DynamicViewStep) |
     rules+=DynamicViewRule
   )*
 '}'
+
+DynamicViewBranchBlock:
+  kind=('alternate'|'alt'|'parallel'|'par') 'branch' (branchId=Id)? '{'
+    paths+=DynamicViewBranchPath*
+  '}'
+;
+
+DynamicViewBranchPath:
+  'path' pathId=Id
+  (isDefault?='[default]')?
+  (title=String)?
+  '{'
+    steps+=DynamicViewBranchBodyStep*
+  '}'
+;
+
+DynamicViewBranchBodyStep:
+  DynamicViewBranchBlock |
+  DynamicViewParallelSteps |
+  DynamicViewAlternateSteps |
+  DynamicViewStep
+;
 ;
 
 DynamicViewProperty:

@@ -113,6 +113,24 @@ export namespace Types {
     }
   >
 
+  export type SequenceBranchAreaData = Simplify<
+    & LeafNodeData
+    & {
+      branchId: string
+      kind: 'alternate' | 'parallel'
+    }
+  >
+
+  export type SequenceBranchPathData = Simplify<
+    & LeafNodeData
+    & {
+      branchId: string
+      pathId: string
+      index: number
+      isDefault: boolean
+    }
+  >
+
   export type CompoundNodeData = Simplify<
     & BaseNodeData
     & NonOptional<
@@ -178,6 +196,8 @@ export namespace Types {
   export type SequenceActorNode = BaseNode<SequenceActorNodeData, 'seq-actor'>
   export type SequenceParallelArea = BaseNode<SequenceParallelAreaData, 'seq-parallel'>
   export type SequenceAlternateArea = BaseNode<SequenceAlternateAreaData, 'seq-alternate'>
+  export type SequenceBranchAreaNode = BaseNode<SequenceBranchAreaData, 'seq-branch-area'>
+  export type SequenceBranchPathNode = BaseNode<SequenceBranchPathData, 'seq-branch-path'>
 
   export type CompoundElementNode = BaseNode<CompoundElementNodeData, 'compound-element'>
   export type CompoundDeploymentNode = BaseNode<CompoundDeploymentNodeData, 'compound-deployment'>
@@ -192,6 +212,8 @@ export namespace Types {
     | SequenceActorNode
     | SequenceParallelArea
     | SequenceAlternateArea
+    | SequenceBranchAreaNode
+    | SequenceBranchPathNode
 
   export type NodeType = AnyNode['type']
 
@@ -204,6 +226,8 @@ export namespace Types {
     SequenceActorNodeData: SequenceActorNodeData
     SequenceParallelAreaData: SequenceParallelAreaData
     SequenceAlternateAreaData: SequenceAlternateAreaData
+    SequenceBranchAreaData: SequenceBranchAreaData
+    SequenceBranchPathData: SequenceBranchPathData
   }>
 
   export type Node<Type extends NodeType = NodeType> = Extract<AnyNode, { type: Type }>

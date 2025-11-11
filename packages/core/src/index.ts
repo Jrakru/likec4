@@ -6,6 +6,12 @@ export type {
   ThemeColorValues,
 } from './styles'
 
+export {
+  createLikeC4FeatureFlags,
+  getLikeC4FeatureFlags,
+  type LikeC4FeatureFlags,
+  setLikeC4FeatureFlags,
+} from './config/featureFlags'
 export * from './types'
 
 export {

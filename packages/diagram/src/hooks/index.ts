@@ -17,3 +17,9 @@ export {
 export { useLikeC4Styles } from './useLikeC4Styles'
 
 export * from './useDiagram'
+export * from './walkthrough/useBranchSelection'
+export * from './walkthrough/useWalkthrough'
+export * from './walkthrough/useWalkthroughActions'
+export * from './walkthrough/useWalkthroughCompletion'
+export * from './walkthrough/useWalkthroughURL'
+export * from './walkthrough/WalkthroughProvider'

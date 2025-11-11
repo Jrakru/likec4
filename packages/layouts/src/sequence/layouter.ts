@@ -5,8 +5,15 @@ import type {
 } from '@likec4/core/types'
 import { invariant, nonexhaustive, nonNullable } from '@likec4/core/utils'
 import * as kiwi from '@lume/kiwi'
-import { last, map, only } from 'remeda'
-import type { AlternateRect, Compound, ParallelRect, Step } from './_types'
+import { last, map, only, sortBy } from 'remeda'
+import type {
+  AlternateRect,
+  Compound,
+  ParallelRect,
+  SequenceBranchArea,
+  SequenceBranchPath,
+  Step,
+} from './_types'
 import {
   ACTOR_GAP,
   COLUMN_GAP,
@@ -67,6 +74,23 @@ interface ActorBox {
   maxRow: number
 }
 
+/**
+ * Minimal local copy of branch collection contract accepted by layouter.
+ * Kept here to avoid importing from core while staying compatible with
+ * ComputedDynamicView.branchCollections.
+ */
+export type SequenceBranchCollectionInput = ReadonlyArray<{
+  branchId: string
+  kind: 'alternate' | 'parallel'
+  decisionStepId: string
+  paths: ReadonlyArray<{
+    pathId: string
+    index: number
+    isDefault: boolean
+    stepIds: ReadonlyArray<string>
+  }>
+}>
+
 export class SequenceViewLayouter {
   #solver = new kiwi.Solver()
 
@@ -100,18 +124,36 @@ export class SequenceViewLayouter {
     y2: kiwi.Expression | kiwi.Variable
   }>
 
-  constructor({
-    actors,
-    steps,
-    compounds,
-  }: {
+  /**
+   * Optional unified branching metadata (minimal local shape).
+   */
+  #branchCollections: SequenceBranchCollectionInput | undefined
+
+  #branchAreas: SequenceBranchArea[] = []
+  #branchPaths: SequenceBranchPath[] = []
+
+  constructor(args: {
     actors: NonEmptyArray<DiagramNode>
     steps: Array<Step>
     compounds: Array<Compound>
+    /**
+     * Optional unified branching metadata. When omitted, branch overlays remain empty
+     * and legacy behaviour is preserved.
+     */
+    branchCollections?: SequenceBranchCollectionInput
   }) {
+    const {
+      actors,
+      steps,
+      compounds,
+      branchCollections,
+    } = args
+
     this.#rowsTop = this.newVar(FIRST_STEP_OFFSET)
     this.#viewportRight = this.newVar(0)
     this.#viewportBottom = this.newVar(0)
+
+    this.#branchCollections = branchCollections
 
     this.#actors = this.addActors(actors)
 
@@ -166,7 +208,13 @@ export class SequenceViewLayouter {
       }
     }
 
+    // At this point kiwi variables are set up; solve once before overlays
     this.#solver.updateVariables()
+
+    // Derive branch overlays purely from solved geometry, if metadata provided.
+    if (this.#branchCollections && this.#branchCollections.length > 0) {
+      this.computeBranchOverlays(steps)
+    }
   }
 
   getParallelBoxes(): Array<BBox & { parallelPrefix: string }> {
@@ -233,6 +281,128 @@ export class SequenceViewLayouter {
       y: 0,
       width: this.#viewportRight.value(),
       height: this.#viewportBottom.value(), // Max Y,
+    }
+  }
+
+  /**
+   * Branch overlays
+   */
+  getBranchAreas(): SequenceBranchArea[] {
+    return this.#branchAreas
+  }
+
+  getBranchPaths(): SequenceBranchPath[] {
+    return this.#branchPaths
+  }
+
+  /**
+   * Compute branch-level and path-level bounding boxes from branchCollections.
+   *
+   * Assumptions / invariants:
+   * - stepIds refer to valid step ids in this layout
+   * - indices are non-negative
+   * - each path has at least one step
+   *
+   * Violations are considered contract errors and surfaced via thrown errors in tests.
+   */
+  private computeBranchOverlays(steps: Step[]): void {
+    const stepById = new Map<string, Step>()
+    for (const s of steps) {
+      stepById.set(String(s.id), s)
+    }
+
+    const pathBoundsByBranch = new Map<string, SequenceBranchPath[]>()
+
+    for (const branch of this.#branchCollections ?? []) {
+      const branchPaths: SequenceBranchPath[] = []
+
+      for (const path of branch.paths) {
+        if (path.index < 0) {
+          throw new Error(`Branch ${branch.branchId} has negative path index ${path.index}`)
+        }
+
+        let minX = Number.POSITIVE_INFINITY
+        let minY = Number.POSITIVE_INFINITY
+        let maxX = Number.NEGATIVE_INFINITY
+        let maxY = Number.NEGATIVE_INFINITY
+
+        for (const stepId of path.stepIds) {
+          const step = stepById.get(String(stepId))
+          if (!step) {
+            throw new Error(
+              `Branch ${branch.branchId} path ${path.pathId} references unknown stepId ${stepId}`,
+            )
+          }
+          const { from, to } = step
+          const srcBox = this.actorBox(from.column)
+          const tgtBox = this.actorBox(to.column)
+          const rowFrom = this.#rows[from.row]
+          const rowTo = this.#rows[to.row]
+          if (!rowFrom || !rowTo) {
+            throw new Error(
+              `Branch ${branch.branchId} path ${path.pathId} has invalid row for stepId ${stepId}`,
+            )
+          }
+
+          const x1 = Math.min(srcBox.centerX.value(), tgtBox.centerX.value())
+          const x2 = Math.max(srcBox.centerX.value(), tgtBox.centerX.value())
+          const y1 = rowFrom.y.value()
+          const y2 = rowTo.bottom.value()
+
+          minX = Math.min(minX, x1)
+          minY = Math.min(minY, y1)
+          maxX = Math.max(maxX, x2)
+          maxY = Math.max(maxY, y2)
+        }
+
+        if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+          throw new Error(
+            `Branch ${branch.branchId} path ${path.pathId} has no resolvable steps`,
+          )
+        }
+
+        branchPaths.push({
+          branchId: branch.branchId,
+          pathId: path.pathId,
+          index: path.index,
+          isDefault: path.isDefault,
+          x: minX,
+          y: minY,
+          width: maxX - minX,
+          height: maxY - minY,
+        })
+      }
+
+      // Deterministic order per branch: by path index ascending
+      const sortedPaths = sortBy(branchPaths, p => p.index)
+      this.#branchPaths.push(...sortedPaths)
+      pathBoundsByBranch.set(branch.branchId, sortedPaths)
+    }
+
+    // Compute enclosing area for each branch from its paths
+    for (const branch of this.#branchCollections ?? []) {
+      const paths = pathBoundsByBranch.get(branch.branchId)
+      if (!paths || paths.length === 0) {
+        throw new Error(`Branch ${branch.branchId} has no computed paths`)
+      }
+      let minX = Number.POSITIVE_INFINITY
+      let minY = Number.POSITIVE_INFINITY
+      let maxX = Number.NEGATIVE_INFINITY
+      let maxY = Number.NEGATIVE_INFINITY
+      for (const p of paths) {
+        minX = Math.min(minX, p.x)
+        minY = Math.min(minY, p.y)
+        maxX = Math.max(maxX, p.x + p.width)
+        maxY = Math.max(maxY, p.y + p.height)
+      }
+      this.#branchAreas.push({
+        branchId: branch.branchId,
+        kind: branch.kind,
+        x: minX,
+        y: minY,
+        width: maxX - minX,
+        height: maxY - minY,
+      })
     }
   }
 
@@ -452,7 +622,7 @@ export class SequenceViewLayouter {
       default: {
         y1 = this.newVar(0)
         y2 = this.newVar(0)
-        for (var col = from.column; col <= to.column; col++) {
+        for (let col = from.column; col <= to.column; col++) {
           const offset = this.actorBox(col).offset
           this.put(y1).before(offset.top, PADDING_TOP_FROM_ACTOR)
           this.put(y2).after(offset.bottom, PADDING)
@@ -462,7 +632,7 @@ export class SequenceViewLayouter {
       }
     }
 
-    for (var col = from.column; col <= to.column; col++) {
+    for (let col = from.column; col <= to.column; col++) {
       const offset = this.actorBox(col).offset
       offset.top = y1
       offset.bottom = y2

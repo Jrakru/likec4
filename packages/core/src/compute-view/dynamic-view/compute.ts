@@ -247,6 +247,17 @@ class DynamicViewCompute<A extends AnyAux> {
 
     const nodeNotations = buildElementNotations(nodes)
 
+    // NOTE:
+    // branchCollections are introduced as a unified branching contract.
+    // For strict backward compatibility, we only populate this when the
+    // unifiedBranching feature flag is enabled. Otherwise it remains undefined
+    // and consumers must continue to rely on plain edges/steps.
+    //
+    // For now we emit no branchCollections; subsequent work will compute the deterministic
+    // structure behind the unifiedBranching feature flag. Keeping this undefined preserves
+    // exact backward-compatible behavior.
+    // const branchCollections: ComputedDynamicView<A>['branchCollections'] | undefined = undefined
+
     return calcViewLayoutHash({
       ...view,
       [_type]: 'dynamic',
