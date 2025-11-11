@@ -10,6 +10,7 @@ import {
   getDefaultBranchPath,
   getNextStep,
   getPreviousStep,
+  isBranchPathValid,
 } from './navigation'
 import type {
   WalkthroughBranchPathRef,
@@ -92,13 +93,10 @@ function applySyncFromUrl(
   let active: WalkthroughStateActive
 
   if (branchRef) {
-    // Only keep branch selection if it corresponds to a known option for that decision step.
-    const options = getBranchOptions(input, stepId)
-    const match = options.find(
-      o => o.branchId === branchRef.branchId && o.pathId === branchRef.pathId,
-    )
-    if (match) {
-      active = createActive(stepId, match)
+    // Keep branch selection if it's a valid branch/path in the collections.
+    // This works whether stepId is a decision step or a step within a path.
+    if (isBranchPathValid(input, branchRef.branchId, branchRef.pathId)) {
+      active = createActive(stepId, branchRef)
     } else {
       active = createActive(stepId)
     }
@@ -293,6 +291,12 @@ export const walkthroughMachine = setup({
           actions: assign(({ event, context }) => applyUpdateFromInput(context, event.input)),
         },
         SYNC_FROM_URL: {
+          target: 'active.navigating',
+          guard: ({ event, context }) => {
+            // Only transition if SYNC_FROM_URL will result in an active step
+            const updated = applySyncFromUrl(context, event.encoded)
+            return !!updated.state.active
+          },
           actions: assign(({ event, context }) => applySyncFromUrl(context, event.encoded)),
         },
       },

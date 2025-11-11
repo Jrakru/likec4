@@ -49,11 +49,15 @@ export function useWalkthroughCompletion(): UseWalkthroughCompletionResult {
 
     const branches = new Map<string, readonly BranchPathProgress[]>()
     const collections = input.branchCollections
-    if (collections && collections.length > 0) {
+    if (collections && collections.length > 0 && state.completedSteps.size > 0) {
       for (const collection of collections) {
         if (!branches.has(collection.branchId)) {
           const progress = getBranchProgress(input, state, collection.branchId)
-          if (progress.length > 0) {
+          // Only include branch if at least one step in any of its paths is completed
+          const hasProgress = collection.paths.some(path =>
+            path.stepIds.some(stepId => state.completedSteps.has(stepId))
+          )
+          if (progress.length > 0 && hasProgress) {
             branches.set(collection.branchId, progress)
           }
         }

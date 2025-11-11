@@ -153,3 +153,26 @@ export function getDefaultBranchPath(
   }
   return { branchId: collection.branchId, pathId: first.pathId }
 }
+
+/**
+ * Check if a branch/path combination exists in the branch collections.
+ * Used for validating branch references (e.g., when syncing from URL).
+ */
+export function isBranchPathValid(
+  input: WalkthroughContextInput,
+  branchId: string,
+  pathId: string,
+): boolean {
+  const collections = input.branchCollections
+  if (!collections || collections.length === 0) {
+    return false
+  }
+
+  const collection = collections.find(c => c.branchId === branchId)
+  if (!collection) {
+    return false
+  }
+
+  const path = collection.paths.find(p => p.pathId === pathId)
+  return !!path
+}
