@@ -1,4 +1,4 @@
-import { createMachine, setup } from 'xstate'
+import { assign, createMachine, setup } from 'xstate'
 import {
   computeCompletedPaths,
   markStepComplete,
@@ -128,20 +128,23 @@ function applyUpdateFromInput(
   if (prevActive && input.stepIds.includes(prevActive.stepId)) {
     // Preserve existing active step if it still exists.
     nextActive = createActive(prevActive.stepId, prevActive.branch)
-  } else {
-    // Otherwise, start from the first available step.
-    const stepId = resolveStartStep(input)
-    if (stepId) {
-      nextActive = createActive(stepId)
-    }
   }
+  // If there was no previous active step, stay idle (don't auto-start).
+
+  const nextState: WalkthroughState = nextActive
+    ? {
+      ...prev.state,
+      active: nextActive,
+    }
+    : {
+      completedSteps: prev.state.completedSteps,
+      completedPaths: prev.state.completedPaths,
+      // no active field - stay idle
+    }
 
   return {
     input,
-    state: {
-      ...prev.state,
-      ...(nextActive ? { active: nextActive } : {}),
-    },
+    state: nextState,
   }
 }
 
@@ -268,47 +271,29 @@ export const walkthroughMachine = setup({
     idle: {
       on: {
         START: {
-          target: 'active',
-          actions: ({ event, context, self }) => {
+          target: 'active.navigating',
+          actions: assign(({ event, context }) => {
             const stepId = resolveStartStep(context.input, event.stepId)
             if (!stepId) {
-              return
+              return context
             }
 
-            const branchOptions = getBranchOptions(context.input, stepId)
             const active = createActive(stepId)
 
-            // Initialize state with resolved active step
-            const nextCtx: WalkthroughMachineContext = {
-              input: context.input,
+            return {
+              ...context,
               state: {
                 ...context.state,
                 active,
               },
             }
-
-            // Transition internally to the correct substate
-            const hasDecision = branchOptions.length > 0
-            self.send({
-              type: hasDecision ? 'INTERNAL__ENTER_BRANCH_DECISION' : 'INTERNAL__ENTER_NAVIGATING',
-              // embed latest context
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            } as any) // Update context
-             // Note: In XState v5, we adjust via assign-like semantics in transitions below.
-            ;(self as unknown as { context: WalkthroughMachineContext }).context = nextCtx
-          },
+          }),
         },
         UPDATE_FROM_INPUT: {
-          actions: ({ event, context, self }) => {
-            const next = applyUpdateFromInput(context, event.input)
-            ;(self as unknown as { context: WalkthroughMachineContext }).context = next
-          },
+          actions: assign(({ event, context }) => applyUpdateFromInput(context, event.input)),
         },
         SYNC_FROM_URL: {
-          actions: ({ event, context, self }) => {
-            const next = applySyncFromUrl(context, event.encoded)
-            ;(self as unknown as { context: WalkthroughMachineContext }).context = next
-          },
+          actions: assign(({ event, context }) => applySyncFromUrl(context, event.encoded)),
         },
       },
     },
@@ -318,47 +303,30 @@ export const walkthroughMachine = setup({
       on: {
         STOP: {
           target: 'idle',
-          actions: ({ context, self }) => {
-            // Preserve completion, clear active.
-            const next: WalkthroughMachineContext = {
-              input: context.input,
-              state: {
-                ...context.state,
-                // omit active
-                completedSteps: context.state.completedSteps,
-                completedPaths: context.state.completedPaths,
-              },
-            }
-            ;(self as unknown as { context: WalkthroughMachineContext }).context = next
-          },
+          actions: assign(({ context }) => ({
+            input: context.input,
+            state: {
+              completedSteps: context.state.completedSteps,
+              completedPaths: context.state.completedPaths,
+              // omit active - explicitly not including it
+            },
+          })),
         },
 
         UPDATE_FROM_INPUT: {
-          actions: ({ event, context, self }) => {
-            const next = applyUpdateFromInput(context, event.input)
-            ;(self as unknown as { context: WalkthroughMachineContext }).context = next
-          },
+          actions: assign(({ event, context }) => applyUpdateFromInput(context, event.input)),
         },
 
         SYNC_FROM_URL: {
-          actions: ({ event, context, self }) => {
-            const next = applySyncFromUrl(context, event.encoded)
-            ;(self as unknown as { context: WalkthroughMachineContext }).context = next
-          },
+          actions: assign(({ event, context }) => applySyncFromUrl(context, event.encoded)),
         },
 
         MARK_COMPLETE: {
-          actions: ({ event, context, self }) => {
-            const next = applyMarkComplete(context, event.stepId)
-            ;(self as unknown as { context: WalkthroughMachineContext }).context = next
-          },
+          actions: assign(({ event, context }) => applyMarkComplete(context, event.stepId)),
         },
 
         RESET_COMPLETION: {
-          actions: ({ context, self }) => {
-            const next = applyResetCompletion(context)
-            ;(self as unknown as { context: WalkthroughMachineContext }).context = next
-          },
+          actions: assign(({ context }) => applyResetCompletion(context)),
         },
       },
       states: {
@@ -366,37 +334,18 @@ export const walkthroughMachine = setup({
           on: {
             NEXT: {
               target: 'navigating',
-              actions: ({ context, self }) => {
-                const next = applyNext(context)
-                ;(self as unknown as { context: WalkthroughMachineContext }).context = next
-
-                const active = next.state.active
-                if (!active) {
-                  return
-                }
-                const hasDecision = getBranchOptions(next.input, active.stepId).length > 0
-                if (hasDecision) {
-                  self.send({
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    type: 'INTERNAL__TO_BRANCH_DECISION',
-                  } as any)
-                }
-              },
+              actions: assign(({ context }) => applyNext(context)),
             },
             PREVIOUS: {
               target: 'navigating',
-              actions: ({ context, self }) => {
-                const next = applyPrevious(context)
-                ;(self as unknown as { context: WalkthroughMachineContext }).context = next
-              },
+              actions: assign(({ context }) => applyPrevious(context)),
             },
             SELECT_BRANCH_PATH: {
               // Selecting a branch path at a decision step moves us into navigating.
               target: 'navigating',
-              actions: ({ event, context, self }) => {
-                const next = applySelectBranchPath(context, event.branchId, event.pathId)
-                ;(self as unknown as { context: WalkthroughMachineContext }).context = next
-              },
+              actions: assign(({ event, context }) =>
+                applySelectBranchPath(context, event.branchId, event.pathId)
+              ),
             },
             // Internal from START when first step is a decision
             INTERNAL__ENTER_BRANCH_DECISION: {
@@ -408,49 +357,38 @@ export const walkthroughMachine = setup({
           on: {
             SELECT_BRANCH_PATH: {
               target: 'navigating',
-              actions: ({ event, context, self }) => {
-                const next = applySelectBranchPath(context, event.branchId, event.pathId)
-                ;(self as unknown as { context: WalkthroughMachineContext }).context = next
-              },
+              actions: assign(({ event, context }) =>
+                applySelectBranchPath(context, event.branchId, event.pathId)
+              ),
             },
             NEXT: {
               target: 'navigating',
-              actions: ({ context, self }) => {
+              actions: assign(({ context }) => {
                 // If NEXT is pressed while in decision state without explicit selection,
                 // follow default path if defined; otherwise fall back to linear NEXT.
                 const active = context.state.active
                 if (!active) {
-                  const nextCtx = applyNext(context)
-                  ;(self as unknown as { context: WalkthroughMachineContext }).context = nextCtx
-                  return
+                  return applyNext(context)
                 }
 
                 const options = getBranchOptions(context.input, active.stepId)
                 if (options.length === 0) {
-                  const nextCtx = applyNext(context)
-                  ;(self as unknown as { context: WalkthroughMachineContext }).context = nextCtx
-                  return
+                  return applyNext(context)
                 }
 
                 const branchIds = Array.from(new Set(options.map(o => o.branchId)))
                 const selectedBranchId = branchIds[0]
                 const def = getDefaultBranchPath(context.input, selectedBranchId)
                 if (def) {
-                  const nextCtx = applySelectBranchPath(context, def.branchId, def.pathId)
-                  ;(self as unknown as { context: WalkthroughMachineContext }).context = nextCtx
-                  return
+                  return applySelectBranchPath(context, def.branchId, def.pathId)
                 }
 
-                const nextCtx = applyNext(context)
-                ;(self as unknown as { context: WalkthroughMachineContext }).context = nextCtx
-              },
+                return applyNext(context)
+              }),
             },
             PREVIOUS: {
               target: 'navigating',
-              actions: ({ context, self }) => {
-                const next = applyPrevious(context)
-                ;(self as unknown as { context: WalkthroughMachineContext }).context = next
-              },
+              actions: assign(({ context }) => applyPrevious(context)),
             },
             INTERNAL__TO_BRANCH_DECISION: {
               target: 'branchDecision',

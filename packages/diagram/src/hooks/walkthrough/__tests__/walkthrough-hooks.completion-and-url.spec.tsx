@@ -43,26 +43,31 @@ describe('walkthrough hooks - completion', () => {
   it('computes overall and branch completion using core progress helpers', () => {
     const wrapper = createWrapper(input)
 
-    const { result: walkthrough } = renderHook(() => useWalkthrough(), { wrapper })
-    const { result: actions } = renderHook(() => useWalkthroughActions(), { wrapper })
-    const { result: completion } = renderHook(() => useWalkthroughCompletion(), { wrapper })
+    const { result } = renderHook(
+      () => ({
+        walkthrough: useWalkthrough(),
+        actions: useWalkthroughActions(),
+        completion: useWalkthroughCompletion(),
+      }),
+      { wrapper },
+    )
 
     // Initially no completion.
-    expect(completion.current.overall.totalSteps).toBe(3)
-    expect(completion.current.overall.completedSteps).toBe(0)
-    expect(completion.current.branches.size).toBe(0)
+    expect(result.current.completion.overall.totalSteps).toBe(3)
+    expect(result.current.completion.overall.completedSteps).toBe(0)
+    expect(result.current.completion.branches.size).toBe(0)
 
     // Start and mark s1 + s2 complete -> branch b1:p1 should be complete, p2 not.
     act(() => {
-      actions.current.start('s1')
-      actions.current.markComplete('s1')
-      actions.current.markComplete('s2')
+      result.current.actions.start('s1')
+      result.current.actions.markComplete('s1')
+      result.current.actions.markComplete('s2')
     })
 
     // Verify overall via helper contract:
-    expect(completion.current.overall.completedSteps).toBe(2)
+    expect(result.current.completion.overall.completedSteps).toBe(2)
 
-    const branchProgress = completion.current.branches.get('b1')
+    const branchProgress = result.current.completion.branches.get('b1')
     expect(branchProgress).toBeDefined()
     const map = branchProgress ?? []
     const p1 = map.find(p => p.pathId === 'p1')
@@ -74,10 +79,10 @@ describe('walkthrough hooks - completion', () => {
 
     // Mark s3 complete -> p2 should now be complete as well.
     act(() => {
-      actions.current.markComplete('s3')
+      result.current.actions.markComplete('s3')
     })
 
-    const branchProgress2 = completion.current.branches.get('b1') ?? []
+    const branchProgress2 = result.current.completion.branches.get('b1') ?? []
     const p2b = branchProgress2.find(p => p.pathId === 'p2')
     expect(p2b?.isComplete).toBe(true)
   })
@@ -112,52 +117,62 @@ describe('walkthrough hooks - URL encoding / sync', () => {
   it('read() encodes current state and apply() drives SYNC_FROM_URL', () => {
     const wrapper = createWrapper(baseInput)
 
-    const { result: walkthrough } = renderHook(() => useWalkthrough(), { wrapper })
-    const { result: actions } = renderHook(() => useWalkthroughActions(), { wrapper })
-    const { result: url } = renderHook(() => useWalkthroughURL(), { wrapper })
+    const { result } = renderHook(
+      () => ({
+        walkthrough: useWalkthrough(),
+        actions: useWalkthroughActions(),
+        url: useWalkthroughURL(),
+      }),
+      { wrapper },
+    )
 
     // Initially idle -> encoded token should be empty.
-    expect(url.current.read()).toBe('')
+    expect(result.current.url.read()).toBe('')
 
     // Start at decision step (s1) and encode
     act(() => {
-      actions.current.start('s1')
+      result.current.actions.start('s1')
     })
-    expect(walkthrough.current.active?.stepId).toBe('s1')
+    expect(result.current.walkthrough.active?.stepId).toBe('s1')
 
-    const tokenAtS1 = url.current.read()
+    const tokenAtS1 = result.current.url.read()
     expect(tokenAtS1).toBe('v-url:s1')
 
     // Select branch path p-alt and move to its first step.
     act(() => {
-      actions.current.selectBranchPath('b-url', 'p-alt')
+      result.current.actions.selectBranchPath('b-url', 'p-alt')
     })
-    expect(walkthrough.current.active?.stepId).toBe('s2')
-    expect(walkthrough.current.active?.branch).toEqual({
+    expect(result.current.walkthrough.active?.stepId).toBe('s2')
+    expect(result.current.walkthrough.active?.branch).toEqual({
       branchId: 'b-url',
       pathId: 'p-alt',
     })
 
-    const tokenWithBranch = url.current.read()
+    const tokenWithBranch = result.current.url.read()
     expect(tokenWithBranch).toBe('v-url:s2:b-url:p-alt')
 
     // Now create a fresh provider instance and apply the encoded token there.
     const wrapper2 = createWrapper(baseInput)
-    const { result: walkthrough2 } = renderHook(() => useWalkthrough(), { wrapper: wrapper2 })
-    const { result: actions2 } = renderHook(() => useWalkthroughActions(), { wrapper: wrapper2 })
-    const { result: url2 } = renderHook(() => useWalkthroughURL(), { wrapper: wrapper2 })
+    const { result: result2 } = renderHook(
+      () => ({
+        walkthrough: useWalkthrough(),
+        actions: useWalkthroughActions(),
+        url: useWalkthroughURL(),
+      }),
+      { wrapper: wrapper2 },
+    )
 
     // Fresh instance: idle
-    expect(walkthrough2.current.active).toBeUndefined()
+    expect(result2.current.walkthrough.active).toBeUndefined()
 
     // Apply encoded token via hook, which dispatches SYNC_FROM_URL to the machine.
     act(() => {
-      url2.current.apply(tokenWithBranch)
+      result2.current.url.apply(tokenWithBranch)
     })
 
     // Machine should sync into matching active state (same viewId)
-    expect(walkthrough2.current.active?.stepId).toBe('s2')
-    expect(walkthrough2.current.active?.branch).toEqual({
+    expect(result2.current.walkthrough.active?.stepId).toBe('s2')
+    expect(result2.current.walkthrough.active?.branch).toEqual({
       branchId: 'b-url',
       pathId: 'p-alt',
     })
@@ -165,14 +180,14 @@ describe('walkthrough hooks - URL encoding / sync', () => {
     // If viewId in token mismatches, SYNC_FROM_URL must be ignored (core contract).
     const badToken = 'other-view:s1'
     act(() => {
-      actions2.current.stop()
+      result2.current.actions.stop()
     })
-    expect(walkthrough2.current.active).toBeUndefined()
+    expect(result2.current.walkthrough.active).toBeUndefined()
 
     act(() => {
-      url2.current.apply(badToken)
+      result2.current.url.apply(badToken)
     })
     // Still idle because viewId mismatch is ignored.
-    expect(walkthrough2.current.active).toBeUndefined()
+    expect(result2.current.walkthrough.active).toBeUndefined()
   })
 })
