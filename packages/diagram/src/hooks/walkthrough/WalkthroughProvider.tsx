@@ -1,14 +1,12 @@
-import { useSelector } from '@xstate/react'
+import { useMachine } from '@xstate/react'
 import React, {
   type ReactNode,
   createContext,
   useContext,
   useEffect,
   useMemo,
-  useRef,
 } from 'react'
 import type { ActorRefFrom, StateFrom } from 'xstate'
-import { createActor } from 'xstate'
 import type {
   WalkthroughContextInput,
   WalkthroughState,
@@ -40,39 +38,15 @@ export interface WalkthroughProviderProps {
 }
 
 export function WalkthroughProvider({ children, input }: WalkthroughProviderProps) {
-  // We create and manage the XState v5 actor manually instead of useInterpret because:
-  // - In this monorepo/Vitest toolchain, @xstate/react does not expose useInterpret as expected at runtime.
-  // - The walkthrough tests expect concrete machine behaviour backed by a live actor.
-  // - XState v5 supports direct actor creation via createActor for framework integration.
-
-  const actorRef = useRef<ActorRefFrom<typeof walkthroughMachine> | null>(null)
-
-  // Lazily create the actor once.
-  if (actorRef.current == null) {
-    const actor = createActor(walkthroughMachine, {
-      input,
-      systemId: 'walkthrough',
-    })
-    actor.start()
-    actorRef.current = actor
-  }
-
-  const actor = actorRef.current!
+  // Use useMachine to properly integrate with React re-renders and subscriptions
+  const [snapshot, send, actor] = useMachine(walkthroughMachine, {
+    input,
+  })
 
   // Sync external input into the machine when it changes.
   useEffect(() => {
-    actor.send({ type: 'UPDATE_FROM_INPUT', input })
-  }, [actor, input])
-
-  // Stop actor on unmount to avoid leaks in tests/apps.
-  useEffect(() => {
-    return () => {
-      actor.stop()
-    }
-  }, [actor])
-
-  // Track the full machine snapshot.
-  const snapshot = useSelector(actor, s => s as StateFrom<typeof walkthroughMachine>)
+    send({ type: 'UPDATE_FROM_INPUT', input })
+  }, [send, input])
 
   const value = useMemo<WalkthroughProviderValue>(
     () => ({

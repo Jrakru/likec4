@@ -41,19 +41,25 @@ describe('walkthrough hooks - provider and core actions', () => {
   it('exposes initial idle state until START is called', () => {
     const wrapper = wrapperWithInput(input)
 
-    const { result: walkthroughResult } = renderHook(() => useWalkthrough(), { wrapper })
-    const { result: actionsResult } = renderHook(() => useWalkthroughActions(), { wrapper })
+    // Both hooks must be in same renderHook to share the same provider/actor
+    const { result } = renderHook(
+      () => ({
+        walkthrough: useWalkthrough(),
+        actions: useWalkthroughActions(),
+      }),
+      { wrapper },
+    )
 
     // Initially idle: no active step, no completion.
-    expect(walkthroughResult.current.active).toBeUndefined()
-    expect(walkthroughResult.current.completedSteps.size).toBe(0)
-    expect(walkthroughResult.current.completedPaths.size).toBe(0)
+    expect(result.current.walkthrough.active).toBeUndefined()
+    expect(result.current.walkthrough.completedSteps.size).toBe(0)
+    expect(result.current.walkthrough.completedPaths.size).toBe(0)
 
     // START should move to first step (s1)
     act(() => {
-      actionsResult.current.start()
+      result.current.actions.start()
     })
-    expect(walkthroughResult.current.active).toEqual(
+    expect(result.current.walkthrough.active).toEqual(
       expect.objectContaining({
         stepId: 's1',
       }),
@@ -63,14 +69,19 @@ describe('walkthrough hooks - provider and core actions', () => {
   it('supports explicit START stepId when valid', () => {
     const wrapper = wrapperWithInput(input)
 
-    const { result: walkthroughResult } = renderHook(() => useWalkthrough(), { wrapper })
-    const { result: actionsResult } = renderHook(() => useWalkthroughActions(), { wrapper })
+    const { result } = renderHook(
+      () => ({
+        walkthrough: useWalkthrough(),
+        actions: useWalkthroughActions(),
+      }),
+      { wrapper },
+    )
 
     act(() => {
-      actionsResult.current.start('s2')
+      result.current.actions.start('s2')
     })
 
-    expect(walkthroughResult.current.active).toEqual(
+    expect(result.current.walkthrough.active).toEqual(
       expect.objectContaining({
         stepId: 's2',
       }),
@@ -80,71 +91,81 @@ describe('walkthrough hooks - provider and core actions', () => {
   it('NEXT and PREVIOUS follow navigation semantics', () => {
     const wrapper = wrapperWithInput(input)
 
-    const { result: walkthroughResult } = renderHook(() => useWalkthrough(), { wrapper })
-    const { result: actionsResult } = renderHook(() => useWalkthroughActions(), { wrapper })
+    const { result } = renderHook(
+      () => ({
+        walkthrough: useWalkthrough(),
+        actions: useWalkthroughActions(),
+      }),
+      { wrapper },
+    )
 
     act(() => {
-      actionsResult.current.start()
+      result.current.actions.start()
     })
-    expect(walkthroughResult.current.active?.stepId).toBe('s1')
+    expect(result.current.walkthrough.active?.stepId).toBe('s1')
 
     act(() => {
-      actionsResult.current.next()
+      result.current.actions.next()
     })
-    expect(walkthroughResult.current.active?.stepId).toBe('s2')
+    expect(result.current.walkthrough.active?.stepId).toBe('s2')
 
     act(() => {
-      actionsResult.current.next()
+      result.current.actions.next()
     })
-    expect(walkthroughResult.current.active?.stepId).toBe('s3')
+    expect(result.current.walkthrough.active?.stepId).toBe('s3')
 
     // At end: NEXT should be a no-op (per getNextStep)
     act(() => {
-      actionsResult.current.next()
+      result.current.actions.next()
     })
-    expect(walkthroughResult.current.active?.stepId).toBe('s3')
+    expect(result.current.walkthrough.active?.stepId).toBe('s3')
 
     // PREVIOUS should move back
     act(() => {
-      actionsResult.current.previous()
+      result.current.actions.previous()
     })
-    expect(walkthroughResult.current.active?.stepId).toBe('s2')
+    expect(result.current.walkthrough.active?.stepId).toBe('s2')
 
     act(() => {
-      actionsResult.current.previous()
+      result.current.actions.previous()
     })
-    expect(walkthroughResult.current.active?.stepId).toBe('s1')
+    expect(result.current.walkthrough.active?.stepId).toBe('s1')
 
     // At beginning: PREVIOUS is a no-op
     act(() => {
-      actionsResult.current.previous()
+      result.current.actions.previous()
     })
-    expect(walkthroughResult.current.active?.stepId).toBe('s1')
+    expect(result.current.walkthrough.active?.stepId).toBe('s1')
   })
 
   it('STOP returns to idle without losing completion state', () => {
     const wrapper = wrapperWithInput(input)
 
-    const { result: walkthroughResult } = renderHook(() => useWalkthrough(), { wrapper })
-    const { result: actionsResult } = renderHook(() => useWalkthroughActions(), { wrapper })
+    const { result } = renderHook(
+      () => ({
+        walkthrough: useWalkthrough(),
+        actions: useWalkthroughActions(),
+      }),
+      { wrapper },
+    )
 
     act(() => {
-      actionsResult.current.start()
+      result.current.actions.start()
     })
-    expect(walkthroughResult.current.active?.stepId).toBe('s1')
+    expect(result.current.walkthrough.active?.stepId).toBe('s1')
 
     act(() => {
-      actionsResult.current.markComplete('s1')
+      result.current.actions.markComplete('s1')
     })
-    expect(walkthroughResult.current.completedSteps.has('s1')).toBe(true)
+    expect(result.current.walkthrough.completedSteps.has('s1')).toBe(true)
 
     act(() => {
-      actionsResult.current.stop()
+      result.current.actions.stop()
     })
 
     // active cleared
-    expect(walkthroughResult.current.active).toBeUndefined()
+    expect(result.current.walkthrough.active).toBeUndefined()
     // completion kept
-    expect(walkthroughResult.current.completedSteps.has('s1')).toBe(true)
+    expect(result.current.walkthrough.completedSteps.has('s1')).toBe(true)
   })
 })

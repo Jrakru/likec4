@@ -47,23 +47,28 @@ describe('walkthrough hooks - branch selection', () => {
   it('returns options at decision step and updates activeBranch on selection', () => {
     const wrapper = wrapperWithInput(branchInput)
 
-    const { result: walkthrough } = renderHook(() => useWalkthrough(), { wrapper })
-    const { result: actions } = renderHook(() => useWalkthroughActions(), { wrapper })
-    const { result: branch } = renderHook(() => useBranchSelection(), { wrapper })
+    const { result } = renderHook(
+      () => ({
+        walkthrough: useWalkthrough(),
+        actions: useWalkthroughActions(),
+        branch: useBranchSelection(),
+      }),
+      { wrapper },
+    )
 
     // Initially idle: no active, no options.
-    expect(walkthrough.current.active).toBeUndefined()
-    expect(branch.current.activeBranch).toBeUndefined()
-    expect(branch.current.options).toBeUndefined()
+    expect(result.current.walkthrough.active).toBeUndefined()
+    expect(result.current.branch.activeBranch).toBeUndefined()
+    expect(result.current.branch.options).toBeUndefined()
 
     // Start walkthrough: should land on decision step d1
     act(() => {
-      actions.current.start('d1')
+      result.current.actions.start('d1')
     })
-    expect(walkthrough.current.active?.stepId).toBe('d1')
+    expect(result.current.walkthrough.active?.stepId).toBe('d1')
 
     // At decision step: options should be available
-    const options = branch.current.options as readonly WalkthroughBranchPathRef[] | undefined
+    const options = result.current.branch.options as readonly WalkthroughBranchPathRef[] | undefined
     expect(options).toBeDefined()
     expect(options?.length).toBe(2)
     expect(options).toEqual(
@@ -74,21 +79,21 @@ describe('walkthrough hooks - branch selection', () => {
     )
 
     // No branch selected yet
-    expect(branch.current.activeBranch).toBeUndefined()
+    expect(result.current.branch.activeBranch).toBeUndefined()
 
     // Select branch path-a
     act(() => {
-      actions.current.selectBranchPath('branch-alt', 'path-a')
+      result.current.actions.selectBranchPath('branch-alt', 'path-a')
     })
 
     // Active step should move to first step of selected path (a1)
-    expect(walkthrough.current.active?.stepId).toBe('a1')
-    expect(branch.current.activeBranch).toEqual({
+    expect(result.current.walkthrough.active?.stepId).toBe('a1')
+    expect(result.current.branch.activeBranch).toEqual({
       branchId: 'branch-alt',
       pathId: 'path-a',
     })
 
     // At non-decision step, options should not be exposed anymore
-    expect(branch.current.options).toBeUndefined()
+    expect(result.current.branch.options).toBeUndefined()
   })
 })
