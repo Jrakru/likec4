@@ -1,7 +1,6 @@
 // oxlint-disable no-floating-promises
 import {
   BBox,
-  getParallelStepsPrefix,
   invariant,
   isStepEdgeId,
   nonexhaustive,
@@ -27,7 +26,7 @@ import {
 } from '@xyflow/react'
 import { type EdgeChange, type NodeChange, type Rect, type Viewport, nodeToRect } from '@xyflow/system'
 import type { MouseEvent } from 'react'
-import { clamp, first, hasAtLeast, prop } from 'remeda'
+import { clamp, hasAtLeast, prop } from 'remeda'
 import type { PartialDeep } from 'type-fest'
 import type {
   ActorLogicFrom,
@@ -76,6 +75,8 @@ import { type HotKeyEvent, hotkeyActorLogic } from './hotkeyActor'
 import { DiagramToggledFeaturesPersistence } from './persistence'
 import { type Events as SyncLayoutEvents, syncManualLayoutActorLogic } from './syncManualLayoutActor'
 import { activeSequenceBounds, findDiagramEdge, findDiagramNode, focusedBounds, typedSystem } from './utils'
+import type { WalkthroughContextInput } from './walkthrough/types'
+import { walkthroughMachine } from './walkthrough/walkthrough-machine'
 
 export interface NavigationHistory {
   history: ReadonlyArray<{
@@ -137,10 +138,66 @@ export interface Context extends Input {
 
   // If Dynamic View
   dynamicViewVariant: DynamicViewDisplayVariant
+  // Legacy walkthrough state is kept for compatibility but no longer authoritative.
   activeWalkthrough: null | {
     stepId: StepEdgeId
     parallelPrefix: string | null
   }
+}
+
+function buildWalkthroughInput(context: Context): WalkthroughContextInput | undefined {
+  // Only dynamic views are eligible for walkthrough.
+  if (context.view._type !== 'dynamic') {
+    return undefined
+  }
+
+  const stepIds: string[] = context.xyedges
+    .filter(e => isStepEdgeId(e.id as any))
+    .map(e => e.id)
+
+  // Dynamic view without any walkthrough-capable stepIds is not eligible.
+  if (stepIds.length === 0) {
+    return undefined
+  }
+
+  const branchCollections = context.view.branchCollections?.map((branch) => ({
+    branchId: branch.branchId,
+    kind: branch.kind,
+    decisionStepId: branch.decisionStepId,
+    paths: branch.paths.map((p, index) => ({
+      pathId: p.pathId,
+      pathIndex: p.pathIndex ?? index,
+      isDefaultPath: p.isDefaultPath,
+      pathTitle: p.pathTitle,
+      stepIds: p.stepIds,
+    })),
+  }))
+
+  return {
+    viewId: context.view.id,
+    stepIds,
+    ...(branchCollections && branchCollections.length > 0 ? { branchCollections } : {}),
+  }
+}
+
+/**
+ * Internal helpers for walkthrough gating.
+ *
+ * Walkthrough must only be active when BOTH:
+ * - the DynamicViewWalkthrough feature flag is enabled, and
+ * - the current context yields a valid WalkthroughContextInput.
+ *
+ * These helpers must be used for any spawn/UPDATE_FROM_INPUT/STOP of the walkthrough child.
+ */
+function hasWalkthroughFeatureEnabled(context: Context): boolean {
+  return context.features.enableDynamicViewWalkthrough === true
+}
+
+function getWalkthroughInputIfEnabled(context: Context): WalkthroughContextInput | undefined {
+  if (!hasWalkthroughFeatureEnabled(context)) {
+    return undefined
+  }
+  return buildWalkthroughInput(context)
 }
 
 export type Events =
@@ -215,6 +272,7 @@ const _diagramMachine = setup({
       hotkey: 'hotkeyActorLogic'
       overlays: 'overlaysActorLogic'
       search: 'searchActorLogic'
+      walkthrough: 'walkthroughMachine'
     },
     events: {} as Events,
     emitted: {} as EmittedEvents,
@@ -224,6 +282,7 @@ const _diagramMachine = setup({
     hotkeyActorLogic,
     overlaysActorLogic,
     searchActorLogic,
+    walkthroughMachine,
   },
   guards: {
     'isReady': ({ context }) => context.initialized.xydata && context.initialized.xyflow,
@@ -580,6 +639,7 @@ const _diagramMachine = setup({
         active: false,
       })),
     })),
+    // Legacy walkthrough visuals are no longer driven directly from this machine.
     'update active walkthrough': assign(updateActiveWalkthrough),
     'open element details': sendTo(
       ({ system }) => typedSystem(system).overlaysActorRef!,
@@ -636,25 +696,17 @@ const _diagramMachine = setup({
         })
       },
     ),
-    'emit: walkthroughStarted': emit(({ context }) => {
-      const edge = context.xyedges.find(x => x.id === context.activeWalkthrough?.stepId)
-      invariant(edge, 'Invalid walkthrough state')
-      return {
-        type: 'walkthroughStarted',
-        edge,
-      }
-    }),
-    'emit: walkthroughStep': emit(({ context }) => {
-      const edge = context.xyedges.find(x => x.id === context.activeWalkthrough?.stepId)
-      invariant(edge, 'Invalid walkthrough state')
-      return {
-        type: 'walkthroughStep',
-        edge,
-      }
-    }),
-    'emit: walkthroughStopped': emit(() => ({
-      type: 'walkthroughStopped',
-    })),
+    // Walkthrough emitted events are now driven by the child walkthroughMachine.
+    // For this refactor, they are no-ops to avoid relying on legacy local state.
+    'emit: walkthroughStarted': () => {
+      // Intentionally no-op; child walkthroughMachine is the source of truth.
+    },
+    'emit: walkthroughStep': () => {
+      // Intentionally no-op; child walkthroughMachine is the source of truth.
+    },
+    'emit: walkthroughStopped': () => {
+      // Intentionally no-op; child walkthroughMachine is the source of truth.
+    },
     'emit: edgeEditingStarted': emit(({ context, event }) => {
       assertEvent(event, 'xyflow.edgeEditingStarted')
       const edge = nonNullable(context.xyedges.find(x => x.id === event.edge.id), `Edge ${event.edge.id} not found`)
@@ -782,6 +834,28 @@ const _diagramMachine = setup({
           })),
           'startSyncLayout',
           'emit: initialized',
+          // Ensure walkthrough child lifecycle on initial ready when eligible.
+          enqueueActions(({ enqueue, context, system }) => {
+            const existing = typedSystem(system).walkthroughActorRef
+            const input = getWalkthroughInputIfEnabled(context)
+
+            if (input) {
+              if (!existing) {
+                enqueue.spawnChild('walkthroughMachine', {
+                  id: 'walkthrough',
+                  input,
+                })
+              } else {
+                enqueue.sendTo(existing, {
+                  type: 'UPDATE_FROM_INPUT',
+                  input,
+                })
+              }
+            } else if (existing) {
+              // Walkthrough must not run when flag is disabled or input is invalid.
+              enqueue.stopChild('walkthrough')
+            }
+          }),
         ],
         target: 'ready',
       }, {
@@ -866,9 +940,72 @@ const _diagramMachine = setup({
             params: prop('event'),
           },
         },
+        // Walkthrough public events:
+        // - Strictly no-op unless both the feature flag and walkthrough input are valid.
+        // - Never spawn or send to a child when disabled/invalid.
         'walkthrough.start': {
           guard: 'is dynamic view',
-          target: '.walkthrough',
+          actions: enqueueActions(({ enqueue, system, context, event }) => {
+            const input = getWalkthroughInputIfEnabled(context)
+            if (!input) {
+              // No-op: feature disabled or input unavailable.
+              return
+            }
+
+            const systemTyped = typedSystem(system)
+            const existing = systemTyped.walkthroughActorRef
+
+            if (!existing) {
+              enqueue.spawnChild('walkthroughMachine', {
+                id: 'walkthrough',
+                input,
+              })
+              enqueue.sendTo(
+                ({ system: s }) => typedSystem(s).walkthroughActorRef!,
+                {
+                  type: 'START',
+                  stepId: event.stepId,
+                },
+              )
+            } else {
+              enqueue.sendTo(existing, {
+                type: 'START',
+                stepId: event.stepId,
+              })
+            }
+          }),
+        },
+        'walkthrough.step': {
+          guard: 'is dynamic view',
+          actions: enqueueActions(({ enqueue, system, context, event }) => {
+            const input = getWalkthroughInputIfEnabled(context)
+            if (!input) {
+              // No-op when feature disabled or input invalid.
+              return
+            }
+            const ref = typedSystem(system).walkthroughActorRef
+            if (!ref) {
+              // Still a no-op if child does not exist.
+              return
+            }
+            enqueue.sendTo(ref, {
+              type: event.direction === 'next' ? 'NEXT' : 'PREVIOUS',
+            })
+          }),
+        },
+        'walkthrough.end': {
+          actions: enqueueActions(({ enqueue, system, context }) => {
+            const input = getWalkthroughInputIfEnabled(context)
+            if (!input) {
+              // No-op when feature disabled or input invalid.
+              return
+            }
+            const ref = typedSystem(system).walkthroughActorRef
+            if (!ref) {
+              return
+            }
+            enqueue.sendTo(ref, { type: 'STOP' })
+          }),
         },
         'toggle.feature': {
           actions: assign({
@@ -1095,126 +1232,7 @@ const _diagramMachine = setup({
             },
           },
         },
-        walkthrough: {
-          entry: [
-            spawnChild('hotkeyActorLogic', { id: 'hotkey' }),
-            assign({
-              viewportBeforeFocus: ({ context }) => context.viewport,
-              activeWalkthrough: ({ context, event }) => {
-                assertEvent(event, 'walkthrough.start')
-                const stepId = event.stepId ?? first(context.xyedges)!.id as StepEdgeId
-                return {
-                  stepId,
-                  parallelPrefix: getParallelStepsPrefix(stepId),
-                }
-              },
-            }),
-            'update active walkthrough',
-            'xyflow:fitFocusedBounds',
-            'emit: walkthroughStarted',
-          ],
-          exit: enqueueActions(({ enqueue, context }) => {
-            enqueue.stopChild('hotkey')
-            if (context.viewportBeforeFocus) {
-              enqueue({ type: 'xyflow:setViewport', params: { viewport: context.viewportBeforeFocus } })
-            } else {
-              enqueue('xyflow:fitDiagram')
-            }
-            // Disable parallel areas highlight
-            if (context.dynamicViewVariant === 'sequence' && context.activeWalkthrough?.parallelPrefix) {
-              enqueue.assign({
-                xynodes: context.xynodes.map(n => {
-                  if (n.type === 'seq-parallel') {
-                    return Base.setData(n, {
-                      color: SeqParallelAreaColor.default,
-                    })
-                  }
-                  return n
-                }),
-              })
-            }
-            enqueue('undim everything')
-            enqueue.assign({
-              activeWalkthrough: null,
-              viewportBeforeFocus: null,
-            })
-
-            enqueue('emit: walkthroughStopped')
-          }),
-          on: {
-            'key.esc': {
-              target: 'idle',
-            },
-            'key.arrow.left': {
-              actions: raise({ type: 'walkthrough.step', direction: 'previous' }),
-            },
-            'key.arrow.right': {
-              actions: raise({ type: 'walkthrough.step', direction: 'next' }),
-            },
-            'walkthrough.step': {
-              actions: [
-                assign(({ context, event }) => {
-                  const { stepId } = context.activeWalkthrough!
-                  const stepIndex = context.xyedges.findIndex(e => e.id === stepId)
-                  const nextStepIndex = clamp(event.direction === 'next' ? stepIndex + 1 : stepIndex - 1, {
-                    min: 0,
-                    max: context.xyedges.length - 1,
-                  })
-                  if (nextStepIndex === stepIndex) {
-                    return {}
-                  }
-                  const nextStepId = context.xyedges[nextStepIndex]!.id as StepEdgeId
-                  return {
-                    activeWalkthrough: {
-                      stepId: nextStepId,
-                      parallelPrefix: getParallelStepsPrefix(nextStepId),
-                    },
-                  }
-                }),
-                'update active walkthrough',
-                'xyflow:fitFocusedBounds',
-                'emit: walkthroughStep',
-              ],
-            },
-            'xyflow.edgeClick': {
-              actions: [
-                assign(({ event, context }) => {
-                  if (!isStepEdgeId(event.edge.id) || event.edge.id === context.activeWalkthrough?.stepId) {
-                    return {}
-                  }
-                  return {
-                    activeWalkthrough: {
-                      stepId: event.edge.id,
-                      parallelPrefix: getParallelStepsPrefix(event.edge.id),
-                    },
-                  }
-                }),
-                'update active walkthrough',
-                'xyflow:fitFocusedBounds',
-                'emit: edgeClick',
-                'emit: walkthroughStep',
-              ],
-            },
-            'notations.unhighlight': {
-              actions: 'update active walkthrough',
-            },
-            'tag.unhighlight': {
-              actions: 'update active walkthrough',
-            },
-            'walkthrough.end': {
-              target: 'idle',
-            },
-            'xyflow.paneDblClick': {
-              target: 'idle',
-            },
-            // We received another view, close overlay and process event again
-            'update.view': {
-              guard: 'is another view',
-              actions: raise(({ event }) => event, { delay: 50 }),
-              target: 'idle',
-            },
-          },
-        },
+        // Legacy walkthrough substate removed; walkthrough is handled by walkthroughMachine child actor.
       },
     },
     // Navigating to another view (after `navigateTo` event)
@@ -1305,7 +1323,7 @@ const _diagramMachine = setup({
     'update.view': {
       actions: [
         assign(updateNavigationHistory),
-        enqueueActions(({ enqueue, event, check, context }) => {
+        enqueueActions(({ enqueue, event, check, context, system }) => {
           const isAnotherView = check('is another view')
           if (isAnotherView) {
             enqueue('closeAllOverlays')
@@ -1352,6 +1370,33 @@ const _diagramMachine = setup({
             ...mergeXYNodesEdges({ context, event }),
             lastOnNavigate: null,
           })
+
+          const walkthroughRef = typedSystem(system).walkthroughActorRef
+          const updatedContext: Context = {
+            ...context,
+            view: event.view,
+            xynodes: event.xynodes,
+            xyedges: event.xyedges,
+          }
+          const walkthroughInput = getWalkthroughInputIfEnabled(updatedContext)
+
+          if (walkthroughInput) {
+            if (walkthroughRef) {
+              enqueue.sendTo(walkthroughRef, {
+                type: 'UPDATE_FROM_INPUT',
+                input: walkthroughInput,
+              })
+            } else {
+              enqueue.spawnChild('walkthroughMachine', {
+                id: 'walkthrough',
+                input: walkthroughInput,
+              })
+            }
+          } else if (walkthroughRef) {
+            // Stop when feature disabled or input invalid for the new view.
+            enqueue.stopChild('walkthrough')
+          }
+
           if (isAnotherView) {
             enqueue('startSyncLayout')
           } else {
@@ -1371,6 +1416,27 @@ const _diagramMachine = setup({
         'updateFeatures',
         'ensure overlays actor state',
         'ensure search actor state',
+        enqueueActions(({ enqueue, context, system }) => {
+          const ref = typedSystem(system).walkthroughActorRef
+          const input = getWalkthroughInputIfEnabled(context)
+
+          if (input) {
+            if (ref) {
+              enqueue.sendTo(ref, {
+                type: 'UPDATE_FROM_INPUT',
+                input,
+              })
+            } else {
+              enqueue.spawnChild('walkthroughMachine', {
+                id: 'walkthrough',
+                input,
+              })
+            }
+          } else if (ref) {
+            // Ensure no walkthrough actor when flag is disabled or input invalid.
+            enqueue.stopChild('walkthrough')
+          }
+        }),
       ],
     },
     'switch.dynamicViewVariant': {

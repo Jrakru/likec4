@@ -11,8 +11,8 @@ import * as m from 'motion/react-m'
 import { memo, useEffect } from 'react'
 import { useDiagramActorRef } from '../hooks/safeContext'
 import { useCurrentViewModel } from '../hooks/useCurrentViewModel'
-import { useDiagramContext } from '../hooks/useDiagram'
 import { useMantinePortalProps } from '../hooks/useMantinePortalProps'
+import { useWalkthrough } from '../hooks/walkthrough/useWalkthrough'
 import { type NavigationPanelActorRef, navigationPanelActorLogic } from './actor'
 import { EditorPanel } from './editorpanel'
 import { NavigationPanelActorContextProvider } from './hooks'
@@ -103,7 +103,8 @@ const NavigationPanelImpl = ({ actor }: { actor: NavigationPanelActorRef }) => {
   )
 }
 const NavigationPanelPopoverTarget = ({ actor }: { actor: NavigationPanelActorRef }) => {
-  const isActiveWalkthrough = useDiagramContext(c => c.activeWalkthrough !== null)
+  const { active } = useWalkthrough()
+  const isActiveWalkthrough = !!active
 
   return (
     <LayoutGroup>

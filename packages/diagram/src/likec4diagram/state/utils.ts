@@ -20,6 +20,9 @@ export function typedSystem(system: ActorSystem<any>) {
     get searchActorRef(): SearchActorRef | null {
       return (system as System).get('search') ?? null
     },
+    get walkthroughActorRef(): any | null {
+      return (system as any).get('walkthrough') ?? null
+    },
   }
 }
 

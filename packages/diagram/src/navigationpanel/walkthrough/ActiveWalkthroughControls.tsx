@@ -10,7 +10,9 @@ import { AnimatePresence } from 'motion/react'
 import * as m from 'motion/react-m'
 import { isTruthy } from 'remeda'
 import { useMantinePortalProps } from '../../hooks'
-import { useDiagram, useDiagramContext } from '../../hooks/useDiagram'
+import { useWalkthrough } from '../../hooks/walkthrough/useWalkthrough'
+import { useWalkthroughActions } from '../../hooks/walkthrough/useWalkthroughActions'
+import { useWalkthroughCompletion } from '../../hooks/walkthrough/useWalkthroughCompletion'
 import { TriggerWalkthroughButton } from './DynamicViewControls'
 
 const PrevNextButton = Button.withProps({
@@ -48,23 +50,28 @@ const ParallelFrame = () => {
 }
 
 export function ActiveWalkthroughControls() {
-  const diagram = useDiagram()
+  const { active } = useWalkthrough()
+  const { next, previous, stop } = useWalkthroughActions()
+  const { overall } = useWalkthroughCompletion()
+
+  if (!active) {
+    // No active walkthrough: render nothing to keep UI stable and no-op safe.
+    return null
+  }
+
   const {
-    isParallel,
-    hasNext,
-    hasPrevious,
-    currentStep,
     totalSteps,
-  } = useDiagramContext(s => {
-    const currentStepIndex = s.xyedges.findIndex(e => e.id === s.activeWalkthrough?.stepId)
-    return ({
-      isParallel: isTruthy(s.activeWalkthrough?.parallelPrefix),
-      hasNext: currentStepIndex < s.xyedges.length - 1,
-      hasPrevious: currentStepIndex > 0,
-      currentStep: currentStepIndex + 1,
-      totalSteps: s.xyedges.length,
-    })
-  })
+    completedSteps,
+    isParallel,
+  } = overall
+
+  const hasSteps = totalSteps > 0
+  const currentStep = hasSteps
+    ? Math.min(completedSteps + 1, totalSteps)
+    : 0
+
+  const hasPrevious = hasSteps && currentStep > 1
+  const hasNext = hasSteps && currentStep < totalSteps
 
   return (
     <AnimatePresence propagate>
@@ -73,10 +80,10 @@ export function ActiveWalkthroughControls() {
         variant="light"
         size="xs"
         color="orange"
-        mr={'sm'}
+        mr="sm"
         onClick={e => {
           e.stopPropagation()
-          diagram.stopWalkthrough()
+          stop()
         }}
         rightSection={<IconPlayerStopFilled size={10} />}
       >
@@ -86,46 +93,55 @@ export function ActiveWalkthroughControls() {
       <PrevNextButton
         key="prev"
         disabled={!hasPrevious}
-        onClick={() => diagram.walkthroughStep('previous')}
+        onClick={e => {
+          e.stopPropagation()
+          previous()
+        }}
         leftSection={<IconPlayerSkipBackFilled size={10} />}
       >
         Previous
       </PrevNextButton>
 
-      <Badge
-        key="step-badge"
-        component={m.div}
-        size="md"
-        radius="sm"
-        // fw={500}
-        variant={isParallel ? 'gradient' : 'transparent'}
-        gradient={{ from: 'red', to: 'orange', deg: 90 }}
-        rightSection={
-          <m.div
-            className={css({
-              fontSize: 'xxs',
-              display: isParallel ? 'block' : 'none',
-            })}>
-            parallel
-          </m.div>
-        }
-        className={css({
-          alignItems: 'baseline',
-        })}
-      >
-        <m.span>
-          {currentStep} / {totalSteps}
-        </m.span>
-      </Badge>
+      {hasSteps && (
+        <Badge
+          key="step-badge"
+          component={m.div}
+          size="md"
+          radius="sm"
+          variant={isParallel ? 'gradient' : 'transparent'}
+          gradient={{ from: 'red', to: 'orange', deg: 90 }}
+          rightSection={
+            <m.div
+              className={css({
+                fontSize: 'xxs',
+                display: isParallel ? 'block' : 'none',
+              })}
+            >
+              parallel
+            </m.div>
+          }
+          className={css({
+            alignItems: 'baseline',
+          })}
+        >
+          <m.span>
+            {currentStep} / {totalSteps}
+          </m.span>
+        </Badge>
+      )}
 
       <PrevNextButton
         key="next"
         disabled={!hasNext}
-        onClick={() => diagram.walkthroughStep('next')}
+        onClick={e => {
+          e.stopPropagation()
+          next()
+        }}
         rightSection={<IconPlayerSkipForwardFilled size={10} />}
       >
         Next
       </PrevNextButton>
+
       {isParallel && <ParallelFrame key="parallel-frame" />}
     </AnimatePresence>
   )

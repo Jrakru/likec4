@@ -9,6 +9,7 @@ import type { HTMLMotionProps } from 'motion/react'
 import * as m from 'motion/react-m'
 import { forwardRef } from 'react'
 import { useDiagram, useDiagramContext } from '../../hooks/useDiagram'
+import { useWalkthroughActions } from '../../hooks/walkthrough/useWalkthroughActions'
 import { Tooltip } from '../_common'
 import { useNavigationActor } from '../hooks'
 
@@ -31,15 +32,15 @@ export const TriggerWalkthroughButton = forwardRef<HTMLButtonElement, ButtonProp
 ))
 
 function StartWalkthroughButton() {
-  const diagram = useDiagram()
   const actor = useNavigationActor()
+  const { start } = useWalkthroughActions()
   return (
     <Tooltip label="Start Dynamic View Walkthrough">
       <TriggerWalkthroughButton
         onClick={e => {
           e.stopPropagation()
           actor.closeDropdown()
-          diagram.startWalkthrough()
+          start()
         }}
         size="compact-xs"
         h={26}

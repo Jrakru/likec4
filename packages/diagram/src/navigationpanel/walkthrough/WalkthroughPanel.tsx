@@ -5,10 +5,9 @@ import { vstack } from '@likec4/styles/patterns'
 import {
   ScrollAreaAutosize,
 } from '@mantine/core'
-import { isNonNull, isTruthy } from 'remeda'
 import { Markdown } from '../../base-primitives'
-import type { DiagramContext } from '../../hooks/useDiagram'
-import { useDiagramContext } from '../../hooks/useDiagram'
+import { useWalkthrough } from '../../hooks/walkthrough/useWalkthrough'
+import { useWalkthroughActorContext } from '../../hooks/walkthrough/WalkthroughProvider'
 
 const SectionHeader = styled('div', {
   base: {
@@ -20,20 +19,30 @@ const SectionHeader = styled('div', {
   },
 })
 
-function selectWalkthroughNotes(s: DiagramContext) {
-  const isActive = isNonNull(s.activeWalkthrough)
-  const activeStepIndex = isActive ? s.xyedges.findIndex(e => e.id === s.activeWalkthrough?.stepId) : -1
-  return {
-    isActive,
-    isParallel: isActive && isTruthy(s.activeWalkthrough?.parallelPrefix),
-    hasNext: isActive && activeStepIndex < s.xyedges.length - 1,
-    hasPrevious: isActive && activeStepIndex > 0,
-    notes: isActive ? s.xyedges[activeStepIndex]?.data?.notes ?? RichText.EMPTY : null,
-  }
-}
-
 export const WalkthroughPanel = () => {
-  const { notes } = useDiagramContext(selectWalkthroughNotes)
+  const { active } = useWalkthrough()
+  const { snapshot } = useWalkthroughActorContext()
+
+  if (!active) {
+    // No active walkthrough: no notes to display.
+    return null
+  }
+
+  // WalkthroughProvider exposes the walkthroughMachine snapshot.
+  // Its context includes `input`, which is the WalkthroughContextInput provided by the host.
+  const ctx = snapshot.context as {
+    input?: {
+      steps?: ReadonlyArray<{
+        id: string
+        notes?: unknown
+      }>
+    }
+  }
+
+  const steps = ctx.input?.steps ?? []
+  const stepId = active.stepId
+
+  const notes = (steps.find(step => step.id === stepId)?.notes as RichText | undefined) ?? RichText.EMPTY
 
   if (!notes || notes.isEmpty) {
     return null
